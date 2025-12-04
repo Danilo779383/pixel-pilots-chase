@@ -4,11 +4,20 @@ export interface AIOpponent {
   carColor: string;
   skillLevel: 'Rookie' | 'Amateur' | 'Pro' | 'Legend';
   speed: number;
-  aggression: number; // How much they weave
+  aggression: number;
   position: number;
   distance: number;
   x: number;
-  scale: number; // Visual depth scale
+  scale: number;
+  isColliding?: boolean;
+  collisionCooldown?: number;
+}
+
+export interface CollisionResult {
+  isColliding: boolean;
+  opponentId: string | null;
+  impactSeverity: number; // 0-1
+  impactDirection: 'left' | 'right' | 'front' | 'rear' | null;
 }
 
 export const generateOpponents = (trackDifficulty: string): AIOpponent[] => {
@@ -24,6 +33,8 @@ export const generateOpponents = (trackDifficulty: string): AIOpponent[] => {
       distance: 0,
       x: 30,
       scale: 1,
+      isColliding: false,
+      collisionCooldown: 0,
     },
     {
       id: 'ai2',
@@ -36,6 +47,8 @@ export const generateOpponents = (trackDifficulty: string): AIOpponent[] => {
       distance: 0,
       x: 70,
       scale: 1,
+      isColliding: false,
+      collisionCooldown: 0,
     },
     {
       id: 'ai3',
@@ -48,6 +61,8 @@ export const generateOpponents = (trackDifficulty: string): AIOpponent[] => {
       distance: 0,
       x: 50,
       scale: 1,
+      isColliding: false,
+      collisionCooldown: 0,
     },
     {
       id: 'ai4',
@@ -60,10 +75,11 @@ export const generateOpponents = (trackDifficulty: string): AIOpponent[] => {
       distance: 0,
       x: 40,
       scale: 1,
+      isColliding: false,
+      collisionCooldown: 0,
     },
   ];
 
-  // Adjust speeds based on track difficulty
   const difficultyMultiplier = {
     'Easy': 0.8,
     'Medium': 0.9,
@@ -83,15 +99,18 @@ export const updateOpponent = (
   maxSpeed: number,
   trackLength: number
 ): AIOpponent => {
-  // Calculate AI speed with some randomness
-  const baseSpeed = maxSpeed * opponent.speed;
+  // Reduce collision cooldown
+  const newCooldown = Math.max(0, (opponent.collisionCooldown || 0) - deltaTime);
+  
+  // Slow down if recently collided
+  const collisionSpeedPenalty = opponent.isColliding ? 0.5 : 1;
+  
+  const baseSpeed = maxSpeed * opponent.speed * collisionSpeedPenalty;
   const speedVariation = (Math.random() - 0.5) * 20;
   const currentSpeed = Math.max(50, baseSpeed + speedVariation);
 
-  // Update distance
   const newDistance = Math.min(opponent.distance + currentSpeed * deltaTime, trackLength);
 
-  // Update horizontal position (racing line)
   const waveFrequency = 0.001 + opponent.aggression * 0.002;
   const waveAmplitude = 10 + opponent.aggression * 15;
   const targetX = 50 + Math.sin(newDistance * waveFrequency) * waveAmplitude;
@@ -101,6 +120,75 @@ export const updateOpponent = (
     ...opponent,
     distance: newDistance,
     x: Math.max(15, Math.min(85, newX)),
+    collisionCooldown: newCooldown,
+    isColliding: newCooldown > 0,
+  };
+};
+
+export const checkCollision = (
+  playerX: number,
+  playerDistance: number,
+  opponents: AIOpponent[]
+): CollisionResult => {
+  const playerWidth = 8; // % of screen width
+  const collisionDistanceThreshold = 30; // meters
+  
+  for (const opponent of opponents) {
+    // Check if within collision distance (front/rear)
+    const distanceDiff = Math.abs(opponent.distance - playerDistance);
+    if (distanceDiff > collisionDistanceThreshold) continue;
+    
+    // Check horizontal overlap
+    const horizontalDiff = Math.abs(opponent.x - playerX);
+    if (horizontalDiff > playerWidth) continue;
+    
+    // Collision detected!
+    const impactSeverity = 1 - (distanceDiff / collisionDistanceThreshold);
+    
+    let impactDirection: 'left' | 'right' | 'front' | 'rear';
+    if (opponent.distance > playerDistance) {
+      impactDirection = 'front';
+    } else {
+      impactDirection = 'rear';
+    }
+    
+    // Add side impact
+    if (opponent.x < playerX) {
+      impactDirection = 'left';
+    } else if (opponent.x > playerX) {
+      impactDirection = 'right';
+    }
+    
+    return {
+      isColliding: true,
+      opponentId: opponent.id,
+      impactSeverity,
+      impactDirection,
+    };
+  }
+  
+  return {
+    isColliding: false,
+    opponentId: null,
+    impactSeverity: 0,
+    impactDirection: null,
+  };
+};
+
+export const applyCollisionToOpponent = (
+  opponent: AIOpponent,
+  playerX: number,
+  pushStrength: number
+): AIOpponent => {
+  // Push opponent away from player
+  const pushDirection = opponent.x < playerX ? -1 : 1;
+  const newX = opponent.x + pushDirection * pushStrength * 5;
+  
+  return {
+    ...opponent,
+    x: Math.max(15, Math.min(85, newX)),
+    isColliding: true,
+    collisionCooldown: 0.5, // 0.5 seconds cooldown
   };
 };
 
