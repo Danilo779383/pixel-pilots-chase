@@ -9,6 +9,16 @@ import {
   applyCollisionToOpponent,
   CollisionResult
 } from '@/utils/aiOpponents';
+import {
+  startEngineSound,
+  updateEngineSound,
+  stopEngineSound,
+  playCollisionSound,
+  playCountdownBeep,
+  playVictorySound,
+  playLoseSound,
+  cleanupAudio
+} from '@/utils/soundEffects';
 
 const RaceScreen: React.FC = () => {
   const { gameState, endRace } = useGame();
@@ -43,15 +53,46 @@ const RaceScreen: React.FC = () => {
     }
   }, [currentTrack]);
 
-  // Countdown timer
+  // Countdown timer with sound
   useEffect(() => {
     if (countdown > 0) {
+      playCountdownBeep(false);
       const timer = setTimeout(() => setCountdown(c => c - 1), 1000);
       return () => clearTimeout(timer);
     } else if (countdown === 0 && !raceStarted) {
+      playCountdownBeep(true); // GO! sound
+      startEngineSound(0);
       setRaceStarted(true);
     }
   }, [countdown, raceStarted]);
+
+  // Update engine sound based on speed
+  useEffect(() => {
+    if (raceStarted && !isFinished) {
+      updateEngineSound(speed);
+    }
+  }, [speed, raceStarted, isFinished]);
+
+  // Cleanup audio on unmount
+  useEffect(() => {
+    return () => {
+      cleanupAudio();
+    };
+  }, []);
+
+  // Play victory or lose sound when race finishes
+  useEffect(() => {
+    if (isFinished) {
+      if (position === 1) {
+        playVictorySound();
+      } else if (position > 3) {
+        playLoseSound();
+      } else {
+        // 2nd or 3rd place - mild victory
+        playVictorySound();
+      }
+    }
+  }, [isFinished, position]);
 
   // Handle keyboard input
   useEffect(() => {
@@ -132,6 +173,7 @@ const RaceScreen: React.FC = () => {
         const newDist = d + speed * speedPenalty * deltaTime;
         if (newDist >= trackLength) {
           setIsFinished(true);
+          stopEngineSound();
           return trackLength;
         }
         return newDist;
@@ -152,6 +194,7 @@ const RaceScreen: React.FC = () => {
           // Apply collision effects
           collisionCooldown.current = 0.3; // Cooldown to prevent spam
           setHandlingPenalty(p => Math.min(1, p + collisionResult.impactSeverity * 0.5));
+          playCollisionSound();
           
           // Screen shake
           setScreenShake({
