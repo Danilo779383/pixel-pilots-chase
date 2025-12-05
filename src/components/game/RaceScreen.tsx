@@ -23,10 +23,11 @@ import {
   startTireScreech,
   stopTireScreech
 } from '@/utils/soundEffects';
+import WeatherEffects from './WeatherEffects';
 
 const RaceScreen: React.FC = () => {
   const { gameState, endRace } = useGame();
-  const { player, currentTrack } = gameState;
+  const { player, currentTrack, weather } = gameState;
   
   const [playerX, setPlayerX] = useState(50);
   const [speed, setSpeed] = useState(0);
@@ -124,7 +125,7 @@ const RaceScreen: React.FC = () => {
 
     const maxSpeed = 200 + (player.stats.speed * 2);
     const baseAcceleration = 0.5 + (player.stats.acceleration * 0.02);
-    const baseHandling = 0.3 + (player.stats.handling * 0.02);
+    const baseHandling = (0.3 + (player.stats.handling * 0.02)) * weather.handlingModifier;
 
     const update = (timestamp: number) => {
       const deltaTime = lastTime.current ? (timestamp - lastTime.current) / 1000 : 0.016;
@@ -320,15 +321,41 @@ const RaceScreen: React.FC = () => {
       {collisionFlash && (
         <div className="absolute inset-0 z-30 bg-destructive/30 pointer-events-none" />
       )}
+
+      {/* Weather effects */}
+      <WeatherEffects weather={weather} speed={speed} />
       
-      {/* Sky gradient */}
-      <div className="absolute inset-0 bg-gradient-to-b from-blue-900 via-purple-900 to-pink-900 opacity-50" />
+      {/* Sky gradient - adjusted for weather */}
+      <div 
+        className="absolute inset-0 opacity-50 transition-all duration-1000"
+        style={{
+          background: weather.condition === 'night' || weather.condition === 'storm'
+            ? 'linear-gradient(to bottom, #0a0a1a 0%, #1a1a3a 50%, #2a2a4a 100%)'
+            : 'linear-gradient(to bottom, #1e3a5f 0%, #4a2060 50%, #8b3060 100%)'
+        }}
+      />
       
       {/* HUD */}
       <div className="relative z-20 p-4 flex justify-between items-start">
         <div className="space-y-1">
           <p className="font-display text-[10px] text-muted-foreground">{currentTrack.name}</p>
           <p className="font-display text-2xl text-primary text-glow-cyan">{formatTime(raceTime)}</p>
+          {/* Weather indicator */}
+          {weather.condition !== 'clear' && (
+            <div className={`flex items-center gap-1 px-2 py-0.5 text-[8px] font-display ${
+              weather.condition === 'rain' ? 'bg-blue-500/20 text-blue-300' :
+              weather.condition === 'night' ? 'bg-indigo-500/20 text-indigo-300' :
+              'bg-purple-500/20 text-purple-300'
+            }`}>
+              <span>
+                {weather.condition === 'rain' && '🌧️'}
+                {weather.condition === 'night' && '🌙'}
+                {weather.condition === 'storm' && '⛈️'}
+              </span>
+              <span className="uppercase">{weather.condition}</span>
+              <span className="text-destructive">-{Math.round((1 - weather.handlingModifier) * 100)}% GRIP</span>
+            </div>
+          )}
         </div>
         
         <div className="text-center">
