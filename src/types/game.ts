@@ -39,6 +39,15 @@ export interface Championship {
   position?: number;
 }
 
+export type WeatherCondition = 'clear' | 'rain' | 'night' | 'storm';
+
+export interface Weather {
+  condition: WeatherCondition;
+  intensity: number; // 0-1
+  handlingModifier: number; // multiplier for handling
+  visibilityModifier: number; // 0-1, affects view distance
+}
+
 export interface GameState {
   currentScreen: 'menu' | 'create-racer' | 'select-racer' | 'garage' | 'world-tour' | 'race' | 'standings' | 'career-end';
   player: Racer | null;
@@ -46,6 +55,7 @@ export interface GameState {
   currentTrack: Track | null;
   season: number;
   isRacing: boolean;
+  weather: Weather;
 }
 
 export const LEGENDARY_RACERS: Racer[] = [

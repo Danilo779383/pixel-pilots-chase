@@ -1,5 +1,22 @@
 import React, { createContext, useContext, useState, useCallback } from 'react';
-import { GameState, Racer, Track, Championship, WORLD_TRACKS } from '@/types/game';
+import { GameState, Racer, Track, Championship, WORLD_TRACKS, Weather, WeatherCondition } from '@/types/game';
+
+const generateRandomWeather = (): Weather => {
+  const conditions: WeatherCondition[] = ['clear', 'clear', 'clear', 'rain', 'night', 'storm'];
+  const condition = conditions[Math.floor(Math.random() * conditions.length)];
+  const intensity = 0.3 + Math.random() * 0.7;
+  
+  switch (condition) {
+    case 'rain':
+      return { condition, intensity, handlingModifier: 0.7 - intensity * 0.2, visibilityModifier: 0.8 - intensity * 0.3 };
+    case 'night':
+      return { condition, intensity, handlingModifier: 0.9, visibilityModifier: 0.5 };
+    case 'storm':
+      return { condition, intensity, handlingModifier: 0.5, visibilityModifier: 0.4 };
+    default:
+      return { condition: 'clear', intensity: 0, handlingModifier: 1, visibilityModifier: 1 };
+  }
+};
 
 interface GameContextType {
   gameState: GameState;
@@ -25,6 +42,7 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
     currentTrack: null,
     season: 1,
     isRacing: false,
+    weather: { condition: 'clear', intensity: 0, handlingModifier: 1, visibilityModifier: 1 },
   });
 
   const setScreen = useCallback((screen: GameState['currentScreen']) => {
@@ -40,7 +58,8 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, []);
 
   const startRace = useCallback(() => {
-    setGameState(prev => ({ ...prev, isRacing: true, currentScreen: 'race' }));
+    const weather = generateRandomWeather();
+    setGameState(prev => ({ ...prev, isRacing: true, currentScreen: 'race', weather }));
   }, []);
 
   const endRace = useCallback((position: number, prize: number) => {
