@@ -47,6 +47,62 @@ export const stopEngineSound = () => {
   }
 };
 
+// Tire screech sound - noise-based screech
+let screechOscillator: OscillatorNode | null = null;
+let screechGain: GainNode | null = null;
+let screechActive = false;
+
+export const startTireScreech = (intensity: number = 0.5) => {
+  const ctx = getAudioContext();
+  
+  if (!screechOscillator) {
+    screechOscillator = ctx.createOscillator();
+    screechGain = ctx.createGain();
+    const filter = ctx.createBiquadFilter();
+    
+    // High-pitched noise for screech
+    screechOscillator.type = 'sawtooth';
+    screechOscillator.frequency.value = 800 + Math.random() * 200;
+    
+    filter.type = 'bandpass';
+    filter.frequency.value = 2000;
+    filter.Q.value = 5;
+    
+    screechGain.gain.value = 0;
+    
+    screechOscillator.connect(filter);
+    filter.connect(screechGain);
+    screechGain.connect(ctx.destination);
+    screechOscillator.start();
+  }
+  
+  if (screechGain) {
+    screechGain.gain.setTargetAtTime(intensity * 0.15, ctx.currentTime, 0.05);
+    // Add wobble to frequency for realistic screech
+    if (screechOscillator) {
+      screechOscillator.frequency.setValueAtTime(800 + Math.random() * 400, ctx.currentTime);
+    }
+  }
+  screechActive = true;
+};
+
+export const stopTireScreech = () => {
+  if (screechGain && screechActive) {
+    const ctx = getAudioContext();
+    screechGain.gain.setTargetAtTime(0, ctx.currentTime, 0.1);
+    screechActive = false;
+  }
+};
+
+export const cleanupTireScreech = () => {
+  if (screechOscillator) {
+    screechOscillator.stop();
+    screechOscillator = null;
+    screechGain = null;
+    screechActive = false;
+  }
+};
+
 // Collision sound - harsh noise burst
 export const playCollisionSound = () => {
   const ctx = getAudioContext();
@@ -349,6 +405,7 @@ export const setMusicVolume = (volume: number) => {
 // Cleanup function
 export const cleanupAudio = () => {
   stopEngineSound();
+  cleanupTireScreech();
   stopAllMusic();
   if (audioContext) {
     audioContext.close();
