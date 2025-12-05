@@ -19,7 +19,9 @@ import {
   playLoseSound,
   cleanupAudio,
   startRaceMusic,
-  stopAllMusic
+  stopAllMusic,
+  startTireScreech,
+  stopTireScreech
 } from '@/utils/soundEffects';
 
 const RaceScreen: React.FC = () => {
@@ -152,11 +154,24 @@ const RaceScreen: React.FC = () => {
 
       // Steering with collision push effect
       let steeringInput = 0;
-      if (keysPressed.current.has('arrowleft') || keysPressed.current.has('a')) {
+      const isTurningLeft = keysPressed.current.has('arrowleft') || keysPressed.current.has('a');
+      const isTurningRight = keysPressed.current.has('arrowright') || keysPressed.current.has('d');
+      
+      if (isTurningLeft) {
         steeringInput -= handling;
       }
-      if (keysPressed.current.has('arrowright') || keysPressed.current.has('d')) {
+      if (isTurningRight) {
         steeringInput += handling;
+      }
+      
+      // Tire screech when turning sharply at high speed
+      const isTurning = isTurningLeft || isTurningRight;
+      const highSpeed = speed > 100;
+      if (isTurning && highSpeed) {
+        const intensity = Math.min(1, (speed - 100) / 100) * Math.abs(steeringInput) * 2;
+        startTireScreech(intensity);
+      } else {
+        stopTireScreech();
       }
       
       // Apply collision push
