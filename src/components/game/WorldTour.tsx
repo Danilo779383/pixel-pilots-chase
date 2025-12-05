@@ -1,6 +1,7 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { useGame } from '@/context/GameContext';
 import { Track } from '@/types/game';
+import { startMenuMusic, stopAllMusic } from '@/utils/soundEffects';
 
 const DIFFICULTY_COLORS = {
   Easy: 'text-neon-green',
@@ -12,6 +13,11 @@ const DIFFICULTY_COLORS = {
 const WorldTour: React.FC = () => {
   const { gameState, tracks, selectTrack, startRace, setScreen } = useGame();
   const { player, currentTrack } = gameState;
+
+  useEffect(() => {
+    startMenuMusic();
+    return () => stopAllMusic();
+  }, []);
 
   if (!player) return null;
 

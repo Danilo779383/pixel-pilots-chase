@@ -1,8 +1,14 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { useGame } from '@/context/GameContext';
+import { startMenuMusic, stopAllMusic } from '@/utils/soundEffects';
 
 const MainMenu: React.FC = () => {
   const { setScreen } = useGame();
+
+  useEffect(() => {
+    startMenuMusic();
+    return () => stopAllMusic();
+  }, []);
 
   return (
     <div className="min-h-screen flex flex-col items-center justify-center relative overflow-hidden">

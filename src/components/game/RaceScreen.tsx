@@ -17,7 +17,9 @@ import {
   playCountdownBeep,
   playVictorySound,
   playLoseSound,
-  cleanupAudio
+  cleanupAudio,
+  startRaceMusic,
+  stopAllMusic
 } from '@/utils/soundEffects';
 
 const RaceScreen: React.FC = () => {
@@ -62,6 +64,7 @@ const RaceScreen: React.FC = () => {
     } else if (countdown === 0 && !raceStarted) {
       playCountdownBeep(true); // GO! sound
       startEngineSound(0);
+      startRaceMusic();
       setRaceStarted(true);
     }
   }, [countdown, raceStarted]);
@@ -83,6 +86,7 @@ const RaceScreen: React.FC = () => {
   // Play victory or lose sound when race finishes
   useEffect(() => {
     if (isFinished) {
+      stopAllMusic();
       if (position === 1) {
         playVictorySound();
       } else if (position > 3) {
