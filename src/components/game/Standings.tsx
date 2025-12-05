@@ -1,9 +1,15 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { useGame } from '@/context/GameContext';
+import { startMenuMusic, stopAllMusic } from '@/utils/soundEffects';
 
 const Standings: React.FC = () => {
   const { gameState, setScreen, unlockTrack, tracks } = useGame();
   const { player } = gameState;
+
+  useEffect(() => {
+    startMenuMusic();
+    return () => stopAllMusic();
+  }, []);
 
   if (!player) return null;
 
