@@ -7,6 +7,7 @@ import WorldTour from './WorldTour';
 import RaceScreen from './RaceScreen';
 import Standings from './Standings';
 import CareerEnd from './CareerEnd';
+import Garage from './Garage';
 
 const GameContainer: React.FC = () => {
   const { gameState } = useGame();
@@ -27,6 +28,8 @@ const GameContainer: React.FC = () => {
         return <Standings />;
       case 'career-end':
         return <CareerEnd />;
+      case 'garage':
+        return <Garage />;
       default:
         return <MainMenu />;
     }
