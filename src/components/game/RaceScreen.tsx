@@ -44,6 +44,16 @@ const RaceScreen: React.FC = () => {
   const [collisionFlash, setCollisionFlash] = useState(false);
   const [handlingPenalty, setHandlingPenalty] = useState(0);
   
+  // Pit stop mechanics
+  const [fuel, setFuel] = useState(100);
+  const [tireWear, setTireWear] = useState(100);
+  const [isPitting, setIsPitting] = useState(false);
+  const [pitProgress, setPitProgress] = useState(0);
+  const [canPit, setCanPit] = useState(false);
+  const PIT_ZONE_START = 0.25; // 25% of track
+  const PIT_ZONE_END = 0.30; // 30% of track
+  const PIT_DURATION = 3000; // 3 seconds
+  
   const keysPressed = useRef<Set<string>>(new Set());
   const gameLoop = useRef<number>();
   const lastTime = useRef<number>(0);
@@ -105,6 +115,12 @@ const RaceScreen: React.FC = () => {
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       keysPressed.current.add(e.key.toLowerCase());
+      // Spacebar for pit stop
+      if (e.key === ' ' && canPit && !isPitting) {
+        setIsPitting(true);
+        setPitProgress(0);
+        setSpeed(0);
+      }
     };
     const handleKeyUp = (e: KeyboardEvent) => {
       keysPressed.current.delete(e.key.toLowerCase());
@@ -117,11 +133,28 @@ const RaceScreen: React.FC = () => {
       window.removeEventListener('keydown', handleKeyDown);
       window.removeEventListener('keyup', handleKeyUp);
     };
-  }, []);
+  }, [canPit, isPitting]);
 
   // Game loop
   useEffect(() => {
     if (isFinished || !player || !raceStarted) return;
+
+    // Handle pit stop
+    if (isPitting) {
+      const pitTimer = setInterval(() => {
+        setPitProgress(p => {
+          if (p >= 100) {
+            setIsPitting(false);
+            setFuel(100);
+            setTireWear(100);
+            clearInterval(pitTimer);
+            return 0;
+          }
+          return p + (100 / (PIT_DURATION / 100));
+        });
+      }, 100);
+      return () => clearInterval(pitTimer);
+    }
 
     const maxSpeed = 200 + (player.stats.speed * 2);
     const baseAcceleration = 0.5 + (player.stats.acceleration * 0.02);
@@ -137,9 +170,23 @@ const RaceScreen: React.FC = () => {
       // Reduce handling penalty over time
       setHandlingPenalty(p => Math.max(0, p - deltaTime * 2));
 
+      // Fuel and tire degradation
+      const fuelConsumption = deltaTime * 1.5 * (speed / 200);
+      const tireDegradation = deltaTime * 1.2 * (speed / 200) * (1 + Math.abs(playerX - 50) / 100);
+      setFuel(f => Math.max(0, f - fuelConsumption));
+      setTireWear(t => Math.max(0, t - tireDegradation));
+
+      // Check pit zone
+      const trackProgress = distance / trackLength;
+      setCanPit(trackProgress >= PIT_ZONE_START && trackProgress <= PIT_ZONE_END && speed < 50);
+
+      // Apply fuel and tire penalties
+      const fuelPenalty = fuel < 20 ? 1 - ((20 - fuel) / 20) * 0.5 : 1;
+      const tirePenalty = tireWear < 30 ? 1 - ((30 - tireWear) / 30) * 0.4 : 1;
+
       // Apply collision effects to acceleration and handling
-      const acceleration = baseAcceleration * (collision?.isColliding ? 0.3 : 1);
-      const handling = baseHandling * (1 - handlingPenalty * 0.5);
+      const acceleration = baseAcceleration * (collision?.isColliding ? 0.3 : 1) * fuelPenalty;
+      const handling = baseHandling * (1 - handlingPenalty * 0.5) * tirePenalty;
 
       // Player acceleration
       if (keysPressed.current.has('arrowup') || keysPressed.current.has('w')) {
@@ -272,7 +319,15 @@ const RaceScreen: React.FC = () => {
     return () => {
       if (gameLoop.current) cancelAnimationFrame(gameLoop.current);
     };
-  }, [isFinished, player, speed, distance, trackLength, raceStarted, playerX, opponents, collision, handlingPenalty]);
+  }, [isFinished, player, speed, distance, trackLength, raceStarted, playerX, opponents, collision, handlingPenalty, isPitting, fuel, tireWear]);
+
+  const handlePitStop = () => {
+    if (canPit && !isPitting) {
+      setIsPitting(true);
+      setPitProgress(0);
+      setSpeed(0);
+    }
+  };
 
   const handleFinish = () => {
     const prizes = [50000, 25000, 10000, 5000, 2000];
@@ -370,6 +425,79 @@ const RaceScreen: React.FC = () => {
           </p>
         </div>
       </div>
+
+      {/* Fuel and Tire indicators */}
+      <div className="relative z-20 px-4 flex justify-center gap-6">
+        <div className="flex items-center gap-2">
+          <span className="text-lg">⛽</span>
+          <div className="w-24">
+            <div className="flex justify-between mb-0.5">
+              <span className="font-display text-[8px] text-muted-foreground">FUEL</span>
+              <span className={`font-display text-[8px] ${fuel < 20 ? 'text-destructive animate-pulse' : 'text-foreground'}`}>
+                {Math.floor(fuel)}%
+              </span>
+            </div>
+            <div className="h-2 bg-muted rounded-full overflow-hidden border border-border">
+              <div 
+                className={`h-full transition-all ${fuel < 20 ? 'bg-destructive' : fuel < 40 ? 'bg-yellow-500' : 'bg-accent'}`}
+                style={{ width: `${fuel}%` }}
+              />
+            </div>
+          </div>
+        </div>
+        <div className="flex items-center gap-2">
+          <span className="text-lg">🛞</span>
+          <div className="w-24">
+            <div className="flex justify-between mb-0.5">
+              <span className="font-display text-[8px] text-muted-foreground">TIRES</span>
+              <span className={`font-display text-[8px] ${tireWear < 30 ? 'text-destructive animate-pulse' : 'text-foreground'}`}>
+                {Math.floor(tireWear)}%
+              </span>
+            </div>
+            <div className="h-2 bg-muted rounded-full overflow-hidden border border-border">
+              <div 
+                className={`h-full transition-all ${tireWear < 30 ? 'bg-destructive' : tireWear < 50 ? 'bg-yellow-500' : 'bg-primary'}`}
+                style={{ width: `${tireWear}%` }}
+              />
+            </div>
+          </div>
+        </div>
+        {/* Pit button */}
+        {canPit && !isPitting && (
+          <button
+            onClick={handlePitStop}
+            className="arcade-button text-[8px] py-1 px-3 animate-pulse bg-accent/20 border-accent"
+          >
+            🔧 PIT STOP [SPACE]
+          </button>
+        )}
+      </div>
+
+      {/* Pit zone indicator */}
+      {(() => {
+        const trackProgress = distance / trackLength;
+        const nearPitZone = trackProgress >= PIT_ZONE_START - 0.05 && trackProgress <= PIT_ZONE_END;
+        const inPitZone = trackProgress >= PIT_ZONE_START && trackProgress <= PIT_ZONE_END;
+        if (nearPitZone && !isPitting) {
+          return (
+            <div className={`relative z-20 text-center mt-2 ${inPitZone ? 'animate-pulse' : ''}`}>
+              <span className={`font-display text-[10px] px-3 py-1 ${
+                inPitZone 
+                  ? 'bg-accent/30 text-accent border border-accent' 
+                  : 'bg-muted/50 text-muted-foreground'
+              }`}>
+                {inPitZone 
+                  ? speed < 50 
+                    ? '🔧 SLOW DOWN & PRESS SPACE TO PIT' 
+                    : '🔧 PIT ZONE - SLOW DOWN!'
+                  : '→ PIT ZONE AHEAD'
+                }
+              </span>
+            </div>
+          );
+        }
+        return null;
+      })()}
 
       {/* Handling indicator */}
       {handlingPenalty > 0 && (
@@ -555,9 +683,45 @@ const RaceScreen: React.FC = () => {
       {/* Controls hint */}
       <div className="relative z-20 p-4 text-center">
         <p className="font-display text-[8px] text-muted-foreground">
-          ↑ ACCELERATE | ↓ BRAKE | ← → STEER | ⚠ AVOID COLLISIONS
+          ↑ ACCELERATE | ↓ BRAKE | ← → STEER | SPACE PIT STOP | ⚠ AVOID COLLISIONS
         </p>
       </div>
+
+      {/* Pit stop overlay */}
+      {isPitting && (
+        <div className="absolute inset-0 z-40 bg-background/90 flex items-center justify-center">
+          <div className="text-center space-y-6 p-8 border-2 border-accent bg-card max-w-md w-full mx-4">
+            <h2 className="font-display text-xl text-accent">🔧 PIT STOP</h2>
+            
+            <div className="space-y-4">
+              <div className="flex items-center justify-center gap-8">
+                <div className="text-center">
+                  <span className="text-4xl">⛽</span>
+                  <p className="font-display text-[8px] text-muted-foreground mt-1">REFUELING</p>
+                </div>
+                <div className="text-center">
+                  <span className="text-4xl">🛞</span>
+                  <p className="font-display text-[8px] text-muted-foreground mt-1">NEW TIRES</p>
+                </div>
+              </div>
+              
+              <div className="h-4 bg-muted rounded-full overflow-hidden border border-border">
+                <div 
+                  className="h-full bg-gradient-to-r from-accent via-primary to-secondary transition-all"
+                  style={{ width: `${pitProgress}%` }}
+                />
+              </div>
+              
+              <p className="font-display text-lg text-foreground animate-pulse">
+                {pitProgress < 30 && '🔧 Lifting car...'}
+                {pitProgress >= 30 && pitProgress < 60 && '⛽ Refueling...'}
+                {pitProgress >= 60 && pitProgress < 90 && '🛞 Changing tires...'}
+                {pitProgress >= 90 && '✅ Almost done!'}
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Countdown overlay */}
       {countdown > 0 && (
