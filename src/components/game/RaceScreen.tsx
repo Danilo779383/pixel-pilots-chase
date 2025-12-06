@@ -53,13 +53,83 @@ const RaceScreen: React.FC = () => {
   const PIT_ZONE_START = 0.25; // 25% of track
   const PIT_ZONE_END = 0.30; // 30% of track
   const PIT_DURATION = 3000; // 3 seconds
+
+  // Strategy advisor state
+  const [strategyMessage, setStrategyMessage] = useState<{ text: string; urgency: 'info' | 'warn' | 'critical' } | null>(null);
+  const lastStrategyUpdate = useRef<number>(0);
+
+  const trackLength = currentTrack ? currentTrack.length * 1000 : 5000;
+
+  // Strategy advisor logic
+  useEffect(() => {
+    if (!raceStarted || isFinished || isPitting) {
+      setStrategyMessage(null);
+      return;
+    }
+
+    const now = Date.now();
+    if (now - lastStrategyUpdate.current < 2000) return; // Update every 2 seconds
+    lastStrategyUpdate.current = now;
+
+    const trackProgress = distance / trackLength;
+    const distanceToPit = PIT_ZONE_START - trackProgress;
+    const pastPitZone = trackProgress > PIT_ZONE_END;
+    const inPitWindow = trackProgress >= PIT_ZONE_START - 0.1 && trackProgress <= PIT_ZONE_END;
+
+    // Estimate if we can finish without pitting
+    const remainingDistance = 1 - trackProgress;
+    const avgConsumptionRate = 1.5 * (speed / 200); // approx fuel per second
+    const estimatedFuelNeeded = remainingDistance * 30; // rough estimate
+    const estimatedTireNeeded = remainingDistance * 25;
+
+    let message: { text: string; urgency: 'info' | 'warn' | 'critical' } | null = null;
+
+    // Critical warnings
+    if (fuel < 10 && !pastPitZone) {
+      message = { text: "⚠️ CRITICAL: Fuel nearly empty! PIT NOW!", urgency: 'critical' };
+    } else if (tireWear < 15 && !pastPitZone) {
+      message = { text: "⚠️ CRITICAL: Tires destroyed! PIT NOW!", urgency: 'critical' };
+    }
+    // Strategic recommendations near pit zone
+    else if (inPitWindow) {
+      if (fuel < 40 || tireWear < 45) {
+        message = { text: "📻 Engineer: Good window to pit - low resources", urgency: 'warn' };
+      } else if (fuel > 70 && tireWear > 70) {
+        message = { text: "📻 Engineer: Resources good - skip this pit", urgency: 'info' };
+      } else {
+        message = { text: "📻 Engineer: Marginal - your call on pitting", urgency: 'info' };
+      }
+    }
+    // Approaching pit zone warnings
+    else if (distanceToPit > 0 && distanceToPit < 0.15) {
+      if (fuel < 35 || tireWear < 40) {
+        message = { text: "📻 Engineer: Pit zone ahead - recommend stopping", urgency: 'warn' };
+      } else if (fuel < estimatedFuelNeeded || tireWear < estimatedTireNeeded) {
+        message = { text: "📻 Engineer: May need to pit - monitor closely", urgency: 'info' };
+      }
+    }
+    // General advice
+    else if (fuel < 25) {
+      message = { text: "📻 Engineer: Fuel getting low, manage pace", urgency: 'warn' };
+    } else if (tireWear < 30) {
+      message = { text: "📻 Engineer: Tires degrading, careful on corners", urgency: 'warn' };
+    } else if (pastPitZone && (fuel < 40 || tireWear < 45)) {
+      message = { text: "📻 Engineer: No more pit stops - conserve!", urgency: 'warn' };
+    }
+    // Position-based strategy
+    else if (position === 1 && trackProgress > 0.5) {
+      message = { text: "📻 Engineer: P1! Maintain gap, manage resources", urgency: 'info' };
+    } else if (position > 3 && trackProgress > 0.6 && fuel > 50) {
+      message = { text: "📻 Engineer: Push now! Resources available", urgency: 'info' };
+    }
+
+    setStrategyMessage(message);
+  }, [distance, fuel, tireWear, raceStarted, isFinished, isPitting, speed, position, trackLength]);
   
   const keysPressed = useRef<Set<string>>(new Set());
   const gameLoop = useRef<number>();
   const lastTime = useRef<number>(0);
   const collisionCooldown = useRef<number>(0);
-
-  const trackLength = currentTrack ? currentTrack.length * 1000 : 5000;
 
   // Initialize opponents
   useEffect(() => {
@@ -425,6 +495,29 @@ const RaceScreen: React.FC = () => {
           </p>
         </div>
       </div>
+
+      {/* Strategy Advisor */}
+      {strategyMessage && raceStarted && !isFinished && !isPitting && (
+        <div className="relative z-20 px-4 mt-2">
+          <div className={`mx-auto max-w-lg px-4 py-2 border-l-4 transition-all ${
+            strategyMessage.urgency === 'critical' 
+              ? 'bg-destructive/20 border-destructive animate-pulse' 
+              : strategyMessage.urgency === 'warn'
+              ? 'bg-yellow-500/20 border-yellow-500'
+              : 'bg-primary/10 border-primary/50'
+          }`}>
+            <p className={`font-display text-[10px] ${
+              strategyMessage.urgency === 'critical' 
+                ? 'text-destructive' 
+                : strategyMessage.urgency === 'warn'
+                ? 'text-yellow-400'
+                : 'text-primary'
+            }`}>
+              {strategyMessage.text}
+            </p>
+          </div>
+        </div>
+      )}
 
       {/* Fuel and Tire indicators */}
       <div className="relative z-20 px-4 flex justify-center gap-6">
