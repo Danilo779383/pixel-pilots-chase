@@ -92,10 +92,16 @@ const WorldTour: React.FC = () => {
               >
                 MENU
               </button>
+              <button
+                onClick={() => setScreen('garage')}
+                className="arcade-button text-[8px] py-2 px-4 border-accent text-accent"
+              >
+                🔧 GARAGE
+              </button>
               {player.stats.fame >= 80 && (
                 <button
                   onClick={() => setScreen('career-end')}
-                  className="arcade-button text-[8px] py-2 px-4 border-accent text-accent"
+                  className="arcade-button text-[8px] py-2 px-4 border-secondary text-secondary"
                 >
                   RETIRE
                 </button>
