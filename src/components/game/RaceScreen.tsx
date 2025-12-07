@@ -65,6 +65,14 @@ const RaceScreen: React.FC = () => {
   const [canPit, setCanPit] = useState(false);
   const [currentPitZone, setCurrentPitZone] = useState<number | null>(null);
 
+  // Lap time tracking
+  const [lapTimes, setLapTimes] = useState<number[]>([]);
+  const [currentLapTime, setCurrentLapTime] = useState(0);
+  const [bestLapTime, setBestLapTime] = useState<number | null>(null);
+  const [lastLapTime, setLastLapTime] = useState<number | null>(null);
+  const [showLapComplete, setShowLapComplete] = useState(false);
+  const lapStartTime = useRef<number>(0);
+
   // Strategy advisor state
   const [strategyMessage, setStrategyMessage] = useState<{ text: string; urgency: 'info' | 'warn' | 'critical' } | null>(null);
   const lastStrategyUpdate = useRef<number>(0);
@@ -287,10 +295,30 @@ const RaceScreen: React.FC = () => {
       setCanPit(pitZoneIndex !== null && speed < 50);
 
       // Update current lap
+      // Update current lap and lap times
       const newLap = Math.floor(distance / lapLength) + 1;
       if (newLap !== currentLap && newLap <= TOTAL_LAPS) {
+        // Lap completed - record lap time
+        const completedLapTime = raceTime - lapStartTime.current;
+        setLapTimes(prev => [...prev, completedLapTime]);
+        setLastLapTime(completedLapTime);
+        
+        // Check for best lap
+        if (bestLapTime === null || completedLapTime < bestLapTime) {
+          setBestLapTime(completedLapTime);
+        }
+        
+        // Show lap complete notification
+        setShowLapComplete(true);
+        setTimeout(() => setShowLapComplete(false), 2000);
+        
+        // Reset lap timer
+        lapStartTime.current = raceTime;
         setCurrentLap(newLap);
       }
+      
+      // Update current lap time
+      setCurrentLapTime(raceTime - lapStartTime.current);
 
       // Apply fuel and tire penalties
       const fuelPenalty = fuel < 20 ? 1 - ((20 - fuel) / 20) * 0.5 : 1;
@@ -542,6 +570,58 @@ const RaceScreen: React.FC = () => {
           </p>
         </div>
       </div>
+
+      {/* Lap Time Display */}
+      <div className="relative z-20 px-4 flex justify-center gap-6">
+        <div className="bg-card/60 border border-border px-3 py-1 text-center">
+          <p className="font-display text-[8px] text-muted-foreground">CURRENT LAP</p>
+          <p className="font-display text-lg text-foreground">{formatTime(currentLapTime)}</p>
+        </div>
+        {bestLapTime !== null && (
+          <div className="bg-primary/20 border border-primary px-3 py-1 text-center">
+            <p className="font-display text-[8px] text-primary">BEST LAP</p>
+            <p className="font-display text-lg text-primary text-glow-cyan">{formatTime(bestLapTime)}</p>
+          </div>
+        )}
+        {lastLapTime !== null && (
+          <div className={`border px-3 py-1 text-center ${
+            bestLapTime !== null && lastLapTime === bestLapTime 
+              ? 'bg-neon-green/20 border-neon-green' 
+              : 'bg-muted/50 border-border'
+          }`}>
+            <p className="font-display text-[8px] text-muted-foreground">LAST LAP</p>
+            <p className={`font-display text-lg ${
+              bestLapTime !== null && lastLapTime === bestLapTime 
+                ? 'text-neon-green' 
+                : 'text-foreground'
+            }`}>
+              {formatTime(lastLapTime)}
+              {bestLapTime !== null && lastLapTime === bestLapTime && ' ⚡'}
+            </p>
+          </div>
+        )}
+      </div>
+
+      {/* Lap Complete Notification */}
+      {showLapComplete && lastLapTime !== null && (
+        <div className="absolute top-1/3 left-1/2 transform -translate-x-1/2 z-30 pointer-events-none">
+          <div className={`px-6 py-3 border-2 ${
+            bestLapTime !== null && lastLapTime === bestLapTime
+              ? 'bg-neon-green/30 border-neon-green'
+              : 'bg-accent/30 border-accent'
+          }`}>
+            <p className="font-display text-xs text-muted-foreground text-center">LAP {currentLap - 1} COMPLETE</p>
+            <p className={`font-display text-2xl text-center ${
+              bestLapTime !== null && lastLapTime === bestLapTime
+                ? 'text-neon-green text-glow-cyan animate-pulse'
+                : 'text-accent text-glow-yellow'
+            }`}>
+              {formatTime(lastLapTime)}
+              {bestLapTime !== null && lastLapTime === bestLapTime && ' BEST!'}
+            </p>
+          </div>
+        </div>
+      )}
 
       {/* Strategy Advisor */}
       {strategyMessage && raceStarted && !isFinished && !isPitting && (
