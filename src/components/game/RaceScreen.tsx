@@ -73,6 +73,15 @@ const RaceScreen: React.FC = () => {
   const [showLapComplete, setShowLapComplete] = useState(false);
   const lapStartTime = useRef<number>(0);
 
+  // Ghost car replay
+  type GhostPoint = { lapProgress: number; x: number; time: number };
+  const [currentLapRecording, setCurrentLapRecording] = useState<GhostPoint[]>([]);
+  const [bestLapRecording, setBestLapRecording] = useState<GhostPoint[]>([]);
+  const [ghostX, setGhostX] = useState<number | null>(null);
+  const [ghostDelta, setGhostDelta] = useState<number | null>(null);
+  const lastGhostUpdate = useRef<number>(0);
+  const GHOST_RECORD_INTERVAL = 50; // Record position every 50ms
+
   // Strategy advisor state
   const [strategyMessage, setStrategyMessage] = useState<{ text: string; urgency: 'info' | 'warn' | 'critical' } | null>(null);
   const lastStrategyUpdate = useRef<number>(0);
@@ -295,6 +304,43 @@ const RaceScreen: React.FC = () => {
       setCanPit(pitZoneIndex !== null && speed < 50);
 
       // Update current lap
+      // Record ghost data for current lap
+      const currentProgress = getLapProgress();
+      const now = Date.now();
+      if (now - lastGhostUpdate.current >= GHOST_RECORD_INTERVAL) {
+        lastGhostUpdate.current = now;
+        setCurrentLapRecording(prev => [...prev, {
+          lapProgress: currentProgress,
+          x: playerX,
+          time: raceTime - lapStartTime.current
+        }]);
+      }
+
+      // Update ghost car position from best lap recording
+      if (bestLapRecording.length > 0) {
+        const currentTime = raceTime - lapStartTime.current;
+        // Find the ghost position at the same time in the best lap
+        let ghostPoint: GhostPoint | null = null;
+        for (let i = 0; i < bestLapRecording.length; i++) {
+          if (bestLapRecording[i].time >= currentTime) {
+            ghostPoint = bestLapRecording[i];
+            break;
+          }
+        }
+        
+        if (ghostPoint) {
+          setGhostX(ghostPoint.x);
+          // Calculate time delta (negative = ahead of ghost, positive = behind)
+          const progressDiff = currentProgress - ghostPoint.lapProgress;
+          // Estimate time delta based on average speed
+          const estimatedDelta = progressDiff * (bestLapTime || 60000) * -1;
+          setGhostDelta(estimatedDelta);
+        } else {
+          setGhostX(null);
+          setGhostDelta(null);
+        }
+      }
+
       // Update current lap and lap times
       const newLap = Math.floor(distance / lapLength) + 1;
       if (newLap !== currentLap && newLap <= TOTAL_LAPS) {
@@ -303,10 +349,14 @@ const RaceScreen: React.FC = () => {
         setLapTimes(prev => [...prev, completedLapTime]);
         setLastLapTime(completedLapTime);
         
-        // Check for best lap
+        // Check for best lap and save recording
         if (bestLapTime === null || completedLapTime < bestLapTime) {
           setBestLapTime(completedLapTime);
+          setBestLapRecording([...currentLapRecording]);
         }
+        
+        // Reset lap recording
+        setCurrentLapRecording([]);
         
         // Show lap complete notification
         setShowLapComplete(true);
@@ -600,6 +650,21 @@ const RaceScreen: React.FC = () => {
             </p>
           </div>
         )}
+        {/* Ghost delta indicator */}
+        {ghostDelta !== null && bestLapRecording.length > 0 && (
+          <div className={`border px-3 py-1 text-center ${
+            ghostDelta < 0 
+              ? 'bg-neon-green/20 border-neon-green' 
+              : 'bg-destructive/20 border-destructive'
+          }`}>
+            <p className="font-display text-[8px] text-muted-foreground">VS GHOST</p>
+            <p className={`font-display text-lg ${
+              ghostDelta < 0 ? 'text-neon-green' : 'text-destructive'
+            }`}>
+              {ghostDelta < 0 ? '-' : '+'}{formatTime(Math.abs(ghostDelta))}
+            </p>
+          </div>
+        )}
       </div>
 
       {/* Lap Complete Notification */}
@@ -846,6 +911,32 @@ const RaceScreen: React.FC = () => {
             )}
           </div>
         ))}
+
+        {/* Ghost car (best lap replay) */}
+        {ghostX !== null && bestLapRecording.length > 0 && (
+          <div 
+            className="absolute bottom-[15%] text-6xl transition-all duration-100 z-40 pointer-events-none"
+            style={{ 
+              left: `${ghostX}%`, 
+              transform: 'translateX(-50%)',
+              opacity: 0.4,
+            }}
+          >
+            <div 
+              className="drop-shadow-lg"
+              style={{ 
+                filter: 'drop-shadow(0 0 10px #00ffff) brightness(1.5)',
+              }}
+            >
+              🏎️
+            </div>
+            <div className="absolute -top-5 left-1/2 transform -translate-x-1/2 whitespace-nowrap">
+              <span className="font-display text-[8px] text-primary bg-background/60 px-1 border border-primary/50">
+                👻 BEST
+              </span>
+            </div>
+          </div>
+        )}
 
         {/* Player car */}
         <div 
