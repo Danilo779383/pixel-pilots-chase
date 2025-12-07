@@ -44,21 +44,57 @@ const RaceScreen: React.FC = () => {
   const [collisionFlash, setCollisionFlash] = useState(false);
   const [handlingPenalty, setHandlingPenalty] = useState(0);
   
+  // Lap-based race mechanics
+  const [currentLap, setCurrentLap] = useState(1);
+  const TOTAL_LAPS = 3;
+  const lapLength = currentTrack ? currentTrack.length * 1000 : 5000;
+  const totalRaceDistance = lapLength * TOTAL_LAPS;
+  
+  // Pit zones per lap (at 25-30% and 70-75% of each lap)
+  const PIT_ZONES = [
+    { start: 0.25, end: 0.30 }, // First pit zone
+    { start: 0.70, end: 0.75 }, // Second pit zone
+  ];
+  const PIT_DURATION = 3000; // 3 seconds
+  
   // Pit stop mechanics
   const [fuel, setFuel] = useState(100);
   const [tireWear, setTireWear] = useState(100);
   const [isPitting, setIsPitting] = useState(false);
   const [pitProgress, setPitProgress] = useState(0);
   const [canPit, setCanPit] = useState(false);
-  const PIT_ZONE_START = 0.25; // 25% of track
-  const PIT_ZONE_END = 0.30; // 30% of track
-  const PIT_DURATION = 3000; // 3 seconds
+  const [currentPitZone, setCurrentPitZone] = useState<number | null>(null);
 
   // Strategy advisor state
   const [strategyMessage, setStrategyMessage] = useState<{ text: string; urgency: 'info' | 'warn' | 'critical' } | null>(null);
   const lastStrategyUpdate = useRef<number>(0);
 
-  const trackLength = currentTrack ? currentTrack.length * 1000 : 5000;
+  // Calculate lap progress
+  const getLapProgress = () => {
+    const distanceInCurrentLap = distance % lapLength;
+    return distanceInCurrentLap / lapLength;
+  };
+
+  // Check if in any pit zone
+  const checkPitZone = (progress: number) => {
+    for (let i = 0; i < PIT_ZONES.length; i++) {
+      if (progress >= PIT_ZONES[i].start && progress <= PIT_ZONES[i].end) {
+        return i;
+      }
+    }
+    return null;
+  };
+
+  // Get nearest upcoming pit zone
+  const getNextPitZone = (progress: number) => {
+    for (let i = 0; i < PIT_ZONES.length; i++) {
+      if (progress < PIT_ZONES[i].start) {
+        return { zone: i, distance: PIT_ZONES[i].start - progress };
+      }
+    }
+    // Next lap's first pit zone
+    return { zone: 0, distance: (1 - progress) + PIT_ZONES[0].start };
+  };
 
   // Strategy advisor logic
   useEffect(() => {
@@ -68,63 +104,61 @@ const RaceScreen: React.FC = () => {
     }
 
     const now = Date.now();
-    if (now - lastStrategyUpdate.current < 2000) return; // Update every 2 seconds
+    if (now - lastStrategyUpdate.current < 2000) return;
     lastStrategyUpdate.current = now;
 
-    const trackProgress = distance / trackLength;
-    const distanceToPit = PIT_ZONE_START - trackProgress;
-    const pastPitZone = trackProgress > PIT_ZONE_END;
-    const inPitWindow = trackProgress >= PIT_ZONE_START - 0.1 && trackProgress <= PIT_ZONE_END;
+    const lapProgress = getLapProgress();
+    const raceProgress = distance / totalRaceDistance;
+    const lapsRemaining = TOTAL_LAPS - currentLap + (1 - lapProgress);
+    const nextPit = getNextPitZone(lapProgress);
+    const inPitZone = checkPitZone(lapProgress) !== null;
+    const nearPitZone = nextPit.distance < 0.1;
 
-    // Estimate if we can finish without pitting
-    const remainingDistance = 1 - trackProgress;
-    const avgConsumptionRate = 1.5 * (speed / 200); // approx fuel per second
-    const estimatedFuelNeeded = remainingDistance * 30; // rough estimate
-    const estimatedTireNeeded = remainingDistance * 25;
+    // Estimate resources needed
+    const estimatedFuelPerLap = 35;
+    const estimatedTirePerLap = 30;
+    const fuelNeeded = lapsRemaining * estimatedFuelPerLap;
+    const tiresNeeded = lapsRemaining * estimatedTirePerLap;
 
     let message: { text: string; urgency: 'info' | 'warn' | 'critical' } | null = null;
 
     // Critical warnings
-    if (fuel < 10 && !pastPitZone) {
-      message = { text: "⚠️ CRITICAL: Fuel nearly empty! PIT NOW!", urgency: 'critical' };
-    } else if (tireWear < 15 && !pastPitZone) {
-      message = { text: "⚠️ CRITICAL: Tires destroyed! PIT NOW!", urgency: 'critical' };
+    if (fuel < 10) {
+      message = { text: `⚠️ CRITICAL: Fuel empty! PIT NOW! Lap ${currentLap}/${TOTAL_LAPS}`, urgency: 'critical' };
+    } else if (tireWear < 15) {
+      message = { text: `⚠️ CRITICAL: Tires destroyed! PIT NOW! Lap ${currentLap}/${TOTAL_LAPS}`, urgency: 'critical' };
     }
-    // Strategic recommendations near pit zone
-    else if (inPitWindow) {
+    // In pit zone recommendations
+    else if (inPitZone) {
       if (fuel < 40 || tireWear < 45) {
-        message = { text: "📻 Engineer: Good window to pit - low resources", urgency: 'warn' };
-      } else if (fuel > 70 && tireWear > 70) {
-        message = { text: "📻 Engineer: Resources good - skip this pit", urgency: 'info' };
-      } else {
-        message = { text: "📻 Engineer: Marginal - your call on pitting", urgency: 'info' };
+        message = { text: `📻 Engineer: Good window to pit - Lap ${currentLap}/${TOTAL_LAPS}`, urgency: 'warn' };
+      } else if (fuel > 70 && tireWear > 70 && currentLap < TOTAL_LAPS) {
+        message = { text: `📻 Engineer: Resources good - skip this stop`, urgency: 'info' };
+      } else if (currentLap === TOTAL_LAPS && raceProgress > 0.8) {
+        message = { text: `📻 Engineer: Final lap! Push to the finish!`, urgency: 'info' };
       }
     }
-    // Approaching pit zone warnings
-    else if (distanceToPit > 0 && distanceToPit < 0.15) {
-      if (fuel < 35 || tireWear < 40) {
-        message = { text: "📻 Engineer: Pit zone ahead - recommend stopping", urgency: 'warn' };
-      } else if (fuel < estimatedFuelNeeded || tireWear < estimatedTireNeeded) {
-        message = { text: "📻 Engineer: May need to pit - monitor closely", urgency: 'info' };
+    // Approaching pit zone
+    else if (nearPitZone) {
+      if (fuel < fuelNeeded || tireWear < tiresNeeded) {
+        message = { text: `📻 Engineer: Pit zone ahead - recommend stopping`, urgency: 'warn' };
       }
     }
     // General advice
     else if (fuel < 25) {
-      message = { text: "📻 Engineer: Fuel getting low, manage pace", urgency: 'warn' };
+      message = { text: `📻 Engineer: Fuel low - next pit zone at ${Math.round(nextPit.distance * 100)}%`, urgency: 'warn' };
     } else if (tireWear < 30) {
-      message = { text: "📻 Engineer: Tires degrading, careful on corners", urgency: 'warn' };
-    } else if (pastPitZone && (fuel < 40 || tireWear < 45)) {
-      message = { text: "📻 Engineer: No more pit stops - conserve!", urgency: 'warn' };
+      message = { text: `📻 Engineer: Tires worn - next pit in ${Math.round(nextPit.distance * 100)}% of lap`, urgency: 'warn' };
     }
-    // Position-based strategy
-    else if (position === 1 && trackProgress > 0.5) {
-      message = { text: "📻 Engineer: P1! Maintain gap, manage resources", urgency: 'info' };
-    } else if (position > 3 && trackProgress > 0.6 && fuel > 50) {
-      message = { text: "📻 Engineer: Push now! Resources available", urgency: 'info' };
+    // Lap-based strategy
+    else if (currentLap === TOTAL_LAPS && lapProgress > 0.5) {
+      message = { text: `📻 Engineer: FINAL LAP! ${position === 1 ? 'Hold position!' : 'Push hard!'}`, urgency: 'info' };
+    } else if (position === 1 && lapProgress > 0.5) {
+      message = { text: `📻 Engineer: P1! Manage gap - Lap ${currentLap}/${TOTAL_LAPS}`, urgency: 'info' };
     }
 
     setStrategyMessage(message);
-  }, [distance, fuel, tireWear, raceStarted, isFinished, isPitting, speed, position, trackLength]);
+  }, [distance, fuel, tireWear, raceStarted, isFinished, isPitting, speed, position, currentLap, lapLength, totalRaceDistance]);
   
   const keysPressed = useRef<Set<string>>(new Set());
   const gameLoop = useRef<number>();
@@ -246,9 +280,17 @@ const RaceScreen: React.FC = () => {
       setFuel(f => Math.max(0, f - fuelConsumption));
       setTireWear(t => Math.max(0, t - tireDegradation));
 
-      // Check pit zone
-      const trackProgress = distance / trackLength;
-      setCanPit(trackProgress >= PIT_ZONE_START && trackProgress <= PIT_ZONE_END && speed < 50);
+      // Check lap progress and pit zones
+      const lapProgress = getLapProgress();
+      const pitZoneIndex = checkPitZone(lapProgress);
+      setCurrentPitZone(pitZoneIndex);
+      setCanPit(pitZoneIndex !== null && speed < 50);
+
+      // Update current lap
+      const newLap = Math.floor(distance / lapLength) + 1;
+      if (newLap !== currentLap && newLap <= TOTAL_LAPS) {
+        setCurrentLap(newLap);
+      }
 
       // Apply fuel and tire penalties
       const fuelPenalty = fuel < 20 ? 1 - ((20 - fuel) / 20) * 0.5 : 1;
@@ -308,10 +350,10 @@ const RaceScreen: React.FC = () => {
       setDistance(d => {
         const speedPenalty = collision?.isColliding ? (1 - collision.impactSeverity * 0.5) : 1;
         const newDist = d + speed * speedPenalty * deltaTime;
-        if (newDist >= trackLength) {
+        if (newDist >= totalRaceDistance) {
           setIsFinished(true);
           stopEngineSound();
-          return trackLength;
+          return totalRaceDistance;
         }
         return newDist;
       });
@@ -363,11 +405,11 @@ const RaceScreen: React.FC = () => {
       // Update AI opponents
       setOpponents(prevOpponents => {
         const updated = prevOpponents.map(op => 
-          updateOpponent(op, deltaTime, maxSpeed, trackLength)
+          updateOpponent(op, deltaTime, maxSpeed, totalRaceDistance)
         );
         
-        const allFinished = updated.every(op => op.distance >= trackLength);
-        if (allFinished && distance >= trackLength) {
+        const allFinished = updated.every(op => op.distance >= totalRaceDistance);
+        if (allFinished && distance >= totalRaceDistance) {
           setIsFinished(true);
         }
 
@@ -389,7 +431,7 @@ const RaceScreen: React.FC = () => {
     return () => {
       if (gameLoop.current) cancelAnimationFrame(gameLoop.current);
     };
-  }, [isFinished, player, speed, distance, trackLength, raceStarted, playerX, opponents, collision, handlingPenalty, isPitting, fuel, tireWear]);
+  }, [isFinished, player, speed, distance, lapLength, totalRaceDistance, raceStarted, playerX, opponents, collision, handlingPenalty, isPitting, fuel, tireWear, currentLap]);
 
   const handlePitStop = () => {
     if (canPit && !isPitting) {
@@ -484,6 +526,11 @@ const RaceScreen: React.FC = () => {
         </div>
         
         <div className="text-center">
+          <p className="font-display text-[10px] text-muted-foreground">LAP</p>
+          <p className="font-display text-2xl text-accent text-glow-yellow">{currentLap}/{TOTAL_LAPS}</p>
+        </div>
+        
+        <div className="text-center">
           <p className="font-display text-[10px] text-muted-foreground">POSITION</p>
           <p className="font-display text-3xl text-accent text-glow-yellow">P{position}</p>
         </div>
@@ -568,10 +615,12 @@ const RaceScreen: React.FC = () => {
 
       {/* Pit zone indicator */}
       {(() => {
-        const trackProgress = distance / trackLength;
-        const nearPitZone = trackProgress >= PIT_ZONE_START - 0.05 && trackProgress <= PIT_ZONE_END;
-        const inPitZone = trackProgress >= PIT_ZONE_START && trackProgress <= PIT_ZONE_END;
-        if (nearPitZone && !isPitting) {
+        const lapProgress = getLapProgress();
+        const nextPit = getNextPitZone(lapProgress);
+        const inPitZone = currentPitZone !== null;
+        const nearPitZone = nextPit.distance < 0.08;
+        
+        if ((nearPitZone || inPitZone) && !isPitting) {
           return (
             <div className={`relative z-20 text-center mt-2 ${inPitZone ? 'animate-pulse' : ''}`}>
               <span className={`font-display text-[10px] px-3 py-1 ${
@@ -581,9 +630,9 @@ const RaceScreen: React.FC = () => {
               }`}>
                 {inPitZone 
                   ? speed < 50 
-                    ? '🔧 SLOW DOWN & PRESS SPACE TO PIT' 
+                    ? '🔧 PRESS SPACE TO PIT' 
                     : '🔧 PIT ZONE - SLOW DOWN!'
-                  : '→ PIT ZONE AHEAD'
+                  : `→ PIT ZONE ${currentPitZone !== null ? currentPitZone + 1 : nextPit.zone + 1} AHEAD`
                 }
               </span>
             </div>
@@ -742,34 +791,68 @@ const RaceScreen: React.FC = () => {
         <div className="absolute top-[25%] right-1/4 text-4xl opacity-30">🌴</div>
       </div>
 
-      {/* Progress bar */}
+      {/* Lap Progress bar */}
       <div className="relative z-20 p-4">
+        {/* Pit zone markers on progress bar */}
         <div className="h-3 bg-muted overflow-hidden border border-border relative">
-          {opponents.map(op => (
+          {/* Pit zone indicators */}
+          {PIT_ZONES.map((zone, idx) => (
             <div
-              key={op.id}
-              className={`absolute top-0 h-full w-1 transition-all ${op.isColliding ? 'animate-pulse' : ''}`}
+              key={idx}
+              className="absolute top-0 h-full bg-accent/30 border-x border-accent/50"
               style={{ 
-                left: `${(op.distance / trackLength) * 100}%`,
-                backgroundColor: op.isColliding ? '#ff0000' : op.carColor,
+                left: `${zone.start * 100}%`,
+                width: `${(zone.end - zone.start) * 100}%`,
               }}
             />
           ))}
+          {/* AI opponents (show position within current lap) */}
+          {opponents.map(op => {
+            const opLapProgress = (op.distance % lapLength) / lapLength;
+            return (
+              <div
+                key={op.id}
+                className={`absolute top-0 h-full w-1 transition-all ${op.isColliding ? 'animate-pulse' : ''}`}
+                style={{ 
+                  left: `${opLapProgress * 100}%`,
+                  backgroundColor: op.isColliding ? '#ff0000' : op.carColor,
+                }}
+              />
+            );
+          })}
+          {/* Player progress within lap */}
           <div 
-            className={`absolute top-0 h-full transition-all ${
-              collision?.isColliding 
-                ? 'bg-gradient-to-r from-destructive via-destructive to-destructive' 
-                : 'bg-gradient-to-r from-primary via-secondary to-accent'
+            className={`absolute top-0 h-full w-2 transition-all z-10 ${
+              collision?.isColliding ? 'bg-destructive' : 'bg-primary'
             }`}
-            style={{ width: `${(distance / trackLength) * 100}%` }}
+            style={{ left: `${getLapProgress() * 100}%` }}
+          />
+          {/* Lap completion overlay */}
+          <div 
+            className="absolute top-0 h-full bg-gradient-to-r from-primary/20 to-transparent pointer-events-none"
+            style={{ width: `${getLapProgress() * 100}%` }}
           />
         </div>
         <div className="flex justify-between mt-1">
-          <span className="font-display text-[8px] text-muted-foreground">START</span>
+          <span className="font-display text-[8px] text-muted-foreground">LAP {currentLap} START</span>
           <span className="font-display text-[8px] text-foreground">
-            {(distance / 1000).toFixed(1)}km / {(trackLength / 1000).toFixed(1)}km
+            {((distance % lapLength) / 1000).toFixed(1)}km / {(lapLength / 1000).toFixed(1)}km
           </span>
-          <span className="font-display text-[8px] text-muted-foreground">FINISH</span>
+          <span className="font-display text-[8px] text-muted-foreground">LAP {currentLap} END</span>
+        </div>
+        {/* Total race progress */}
+        <div className="mt-2">
+          <div className="h-1 bg-muted/50 overflow-hidden border border-border/50 relative">
+            <div 
+              className="absolute top-0 h-full bg-gradient-to-r from-primary via-secondary to-accent transition-all"
+              style={{ width: `${(distance / totalRaceDistance) * 100}%` }}
+            />
+          </div>
+          <div className="text-center mt-0.5">
+            <span className="font-display text-[6px] text-muted-foreground">
+              TOTAL: {(distance / 1000).toFixed(1)}km / {(totalRaceDistance / 1000).toFixed(1)}km
+            </span>
+          </div>
         </div>
       </div>
 
