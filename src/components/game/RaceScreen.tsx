@@ -57,9 +57,52 @@ const RaceScreen: React.FC = () => {
   ];
   const PIT_DURATION = 3000; // 3 seconds
   
+  // Tire compound types
+  type TireCompound = 'soft' | 'medium' | 'hard';
+  
+  interface TireCompoundData {
+    name: string;
+    color: string;
+    gripModifier: number; // Affects handling
+    wearRate: number; // How fast tires degrade
+    optimalTemp: { min: number; max: number }; // Optimal temperature window
+    peakGripBonus: number; // Extra grip when in optimal temp
+  }
+  
+  const TIRE_COMPOUNDS: Record<TireCompound, TireCompoundData> = {
+    soft: {
+      name: 'SOFT',
+      color: '#ff4444',
+      gripModifier: 1.15,
+      wearRate: 1.8,
+      optimalTemp: { min: 80, max: 100 },
+      peakGripBonus: 0.1,
+    },
+    medium: {
+      name: 'MEDIUM',
+      color: '#ffdd44',
+      gripModifier: 1.0,
+      wearRate: 1.0,
+      optimalTemp: { min: 60, max: 90 },
+      peakGripBonus: 0.05,
+    },
+    hard: {
+      name: 'HARD',
+      color: '#ffffff',
+      gripModifier: 0.9,
+      wearRate: 0.6,
+      optimalTemp: { min: 50, max: 80 },
+      peakGripBonus: 0.03,
+    },
+  };
+
   // Pit stop mechanics
   const [fuel, setFuel] = useState(100);
   const [tireWear, setTireWear] = useState(100);
+  const [tireCompound, setTireCompound] = useState<TireCompound>('medium');
+  const [tireTemp, setTireTemp] = useState(50);
+  const [selectedPitCompound, setSelectedPitCompound] = useState<TireCompound>('medium');
+  const [showTireSelection, setShowTireSelection] = useState(true);
   const [isPitting, setIsPitting] = useState(false);
   const [pitProgress, setPitProgress] = useState(0);
   const [canPit, setCanPit] = useState(false);
@@ -268,6 +311,8 @@ const RaceScreen: React.FC = () => {
             setIsPitting(false);
             setFuel(100);
             setTireWear(100);
+            setTireCompound(selectedPitCompound);
+            setTireTemp(50); // Fresh tires start at lower temp
             clearInterval(pitTimer);
             return 0;
           }
@@ -291,9 +336,20 @@ const RaceScreen: React.FC = () => {
       // Reduce handling penalty over time
       setHandlingPenalty(p => Math.max(0, p - deltaTime * 2));
 
+      // Tire temperature simulation
+      const currentCompound = TIRE_COMPOUNDS[tireCompound];
+      const speedHeat = (speed / 200) * 30; // Speed generates heat
+      const steeringHeat = Math.abs(playerX - 50) / 50 * 15; // Steering generates heat
+      const coolingRate = 8; // Natural cooling
+      const targetTemp = 40 + speedHeat + steeringHeat;
+      setTireTemp(t => {
+        const newTemp = t + (targetTemp - t) * deltaTime * 0.5;
+        return Math.max(20, Math.min(120, newTemp));
+      });
+
       // Fuel and tire degradation
       const fuelConsumption = deltaTime * 1.5 * (speed / 200);
-      const tireDegradation = deltaTime * 1.2 * (speed / 200) * (1 + Math.abs(playerX - 50) / 100);
+      const tireDegradation = deltaTime * 1.2 * (speed / 200) * (1 + Math.abs(playerX - 50) / 100) * currentCompound.wearRate;
       setFuel(f => Math.max(0, f - fuelConsumption));
       setTireWear(t => Math.max(0, t - tireDegradation));
 
@@ -370,13 +426,25 @@ const RaceScreen: React.FC = () => {
       // Update current lap time
       setCurrentLapTime(raceTime - lapStartTime.current);
 
+      // Calculate tire grip based on compound and temperature
+      const currentCompoundData = TIRE_COMPOUNDS[tireCompound];
+      const { optimalTemp, gripModifier, peakGripBonus } = currentCompoundData;
+      const inOptimalTemp = tireTemp >= optimalTemp.min && tireTemp <= optimalTemp.max;
+      const tempGripBonus = inOptimalTemp ? peakGripBonus : 0;
+      const tempPenalty = tireTemp < optimalTemp.min 
+        ? (optimalTemp.min - tireTemp) / optimalTemp.min * 0.2
+        : tireTemp > optimalTemp.max 
+          ? (tireTemp - optimalTemp.max) / 30 * 0.15
+          : 0;
+      const tireGrip = (gripModifier + tempGripBonus - tempPenalty) * (tireWear / 100);
+
       // Apply fuel and tire penalties
       const fuelPenalty = fuel < 20 ? 1 - ((20 - fuel) / 20) * 0.5 : 1;
       const tirePenalty = tireWear < 30 ? 1 - ((30 - tireWear) / 30) * 0.4 : 1;
 
       // Apply collision effects to acceleration and handling
       const acceleration = baseAcceleration * (collision?.isColliding ? 0.3 : 1) * fuelPenalty;
-      const handling = baseHandling * (1 - handlingPenalty * 0.5) * tirePenalty;
+      const handling = baseHandling * (1 - handlingPenalty * 0.5) * tirePenalty * tireGrip;
 
       // Player acceleration
       if (keysPressed.current.has('arrowup') || keysPressed.current.has('w')) {
@@ -712,10 +780,10 @@ const RaceScreen: React.FC = () => {
       )}
 
       {/* Fuel and Tire indicators */}
-      <div className="relative z-20 px-4 flex justify-center gap-6">
+      <div className="relative z-20 px-4 flex justify-center gap-4">
         <div className="flex items-center gap-2">
           <span className="text-lg">⛽</span>
-          <div className="w-24">
+          <div className="w-20">
             <div className="flex justify-between mb-0.5">
               <span className="font-display text-[8px] text-muted-foreground">FUEL</span>
               <span className={`font-display text-[8px] ${fuel < 20 ? 'text-destructive animate-pulse' : 'text-foreground'}`}>
@@ -730,23 +798,80 @@ const RaceScreen: React.FC = () => {
             </div>
           </div>
         </div>
+        
+        {/* Tire compound and wear */}
         <div className="flex items-center gap-2">
-          <span className="text-lg">🛞</span>
-          <div className="w-24">
+          <div 
+            className="w-5 h-5 rounded-full border-2 flex items-center justify-center text-[8px] font-bold"
+            style={{ 
+              borderColor: TIRE_COMPOUNDS[tireCompound].color,
+              color: TIRE_COMPOUNDS[tireCompound].color,
+            }}
+          >
+            {tireCompound[0].toUpperCase()}
+          </div>
+          <div className="w-20">
             <div className="flex justify-between mb-0.5">
-              <span className="font-display text-[8px] text-muted-foreground">TIRES</span>
+              <span className="font-display text-[8px]" style={{ color: TIRE_COMPOUNDS[tireCompound].color }}>
+                {TIRE_COMPOUNDS[tireCompound].name}
+              </span>
               <span className={`font-display text-[8px] ${tireWear < 30 ? 'text-destructive animate-pulse' : 'text-foreground'}`}>
                 {Math.floor(tireWear)}%
               </span>
             </div>
             <div className="h-2 bg-muted rounded-full overflow-hidden border border-border">
               <div 
-                className={`h-full transition-all ${tireWear < 30 ? 'bg-destructive' : tireWear < 50 ? 'bg-yellow-500' : 'bg-primary'}`}
-                style={{ width: `${tireWear}%` }}
+                className="h-full transition-all"
+                style={{ 
+                  width: `${tireWear}%`,
+                  backgroundColor: tireWear < 30 ? 'hsl(var(--destructive))' : TIRE_COMPOUNDS[tireCompound].color,
+                }}
               />
             </div>
           </div>
         </div>
+
+        {/* Tire temperature */}
+        <div className="flex items-center gap-2">
+          <span className="text-lg">🌡️</span>
+          <div className="w-20">
+            <div className="flex justify-between mb-0.5">
+              <span className="font-display text-[8px] text-muted-foreground">TEMP</span>
+              <span className={`font-display text-[8px] ${
+                tireTemp >= TIRE_COMPOUNDS[tireCompound].optimalTemp.min && 
+                tireTemp <= TIRE_COMPOUNDS[tireCompound].optimalTemp.max
+                  ? 'text-neon-green'
+                  : tireTemp > TIRE_COMPOUNDS[tireCompound].optimalTemp.max
+                    ? 'text-destructive animate-pulse'
+                    : 'text-blue-400'
+              }`}>
+                {Math.floor(tireTemp)}°C
+              </span>
+            </div>
+            <div className="h-2 bg-muted rounded-full overflow-hidden border border-border relative">
+              {/* Optimal temp window indicator */}
+              <div 
+                className="absolute top-0 h-full bg-neon-green/30"
+                style={{ 
+                  left: `${(TIRE_COMPOUNDS[tireCompound].optimalTemp.min / 120) * 100}%`,
+                  width: `${((TIRE_COMPOUNDS[tireCompound].optimalTemp.max - TIRE_COMPOUNDS[tireCompound].optimalTemp.min) / 120) * 100}%`,
+                }}
+              />
+              <div 
+                className={`absolute top-0 h-full w-1 transition-all ${
+                  tireTemp >= TIRE_COMPOUNDS[tireCompound].optimalTemp.min && 
+                  tireTemp <= TIRE_COMPOUNDS[tireCompound].optimalTemp.max
+                    ? 'bg-neon-green'
+                    : tireTemp > TIRE_COMPOUNDS[tireCompound].optimalTemp.max
+                      ? 'bg-destructive'
+                      : 'bg-blue-400'
+                }`}
+                style={{ left: `${Math.min(100, (tireTemp / 120) * 100)}%` }}
+              />
+            </div>
+          </div>
+        </div>
+
         {/* Pit button */}
         {canPit && !isPitting && (
           <button
@@ -1034,11 +1159,99 @@ const RaceScreen: React.FC = () => {
         </p>
       </div>
 
+      {/* Pre-race tire selection */}
+      {showTireSelection && !raceStarted && countdown > 0 && (
+        <div className="absolute inset-0 z-50 bg-background/95 flex items-center justify-center">
+          <div className="text-center space-y-6 p-8 border-2 border-primary bg-card max-w-lg w-full mx-4">
+            <h2 className="font-display text-xl text-primary text-glow-cyan">🛞 SELECT STARTING TIRES</h2>
+            
+            <div className="grid grid-cols-3 gap-4">
+              {(Object.keys(TIRE_COMPOUNDS) as TireCompound[]).map((compound) => {
+                const data = TIRE_COMPOUNDS[compound];
+                const isSelected = tireCompound === compound;
+                return (
+                  <button
+                    key={compound}
+                    onClick={() => {
+                      setTireCompound(compound);
+                      setSelectedPitCompound(compound);
+                    }}
+                    className={`p-4 border-2 transition-all ${
+                      isSelected 
+                        ? 'border-primary bg-primary/20 scale-105' 
+                        : 'border-border bg-card hover:border-muted-foreground'
+                    }`}
+                  >
+                    <div 
+                      className="w-12 h-12 rounded-full border-4 mx-auto mb-2 flex items-center justify-center text-2xl font-bold"
+                      style={{ borderColor: data.color, color: data.color }}
+                    >
+                      {compound[0].toUpperCase()}
+                    </div>
+                    <p className="font-display text-sm" style={{ color: data.color }}>{data.name}</p>
+                    <div className="mt-2 space-y-1 text-[8px]">
+                      <p className="text-muted-foreground">
+                        GRIP: <span className="text-foreground">{data.gripModifier > 1 ? '+' : ''}{Math.round((data.gripModifier - 1) * 100)}%</span>
+                      </p>
+                      <p className="text-muted-foreground">
+                        WEAR: <span className={data.wearRate > 1 ? 'text-destructive' : 'text-neon-green'}>
+                          {data.wearRate > 1 ? 'FAST' : data.wearRate < 1 ? 'SLOW' : 'NORMAL'}
+                        </span>
+                      </p>
+                      <p className="text-muted-foreground">
+                        TEMP: <span className="text-foreground">{data.optimalTemp.min}-{data.optimalTemp.max}°C</span>
+                      </p>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+            
+            <button 
+              onClick={() => setShowTireSelection(false)}
+              className="arcade-button w-full"
+            >
+              CONFIRM & START RACE
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Pit stop overlay */}
       {isPitting && (
         <div className="absolute inset-0 z-40 bg-background/90 flex items-center justify-center">
-          <div className="text-center space-y-6 p-8 border-2 border-accent bg-card max-w-md w-full mx-4">
+          <div className="text-center space-y-6 p-8 border-2 border-accent bg-card max-w-lg w-full mx-4">
             <h2 className="font-display text-xl text-accent">🔧 PIT STOP</h2>
+            
+            {/* Tire compound selection during pit */}
+            <div className="space-y-2">
+              <p className="font-display text-[10px] text-muted-foreground">SELECT NEW TIRES</p>
+              <div className="flex justify-center gap-3">
+                {(Object.keys(TIRE_COMPOUNDS) as TireCompound[]).map((compound) => {
+                  const data = TIRE_COMPOUNDS[compound];
+                  const isSelected = selectedPitCompound === compound;
+                  return (
+                    <button
+                      key={compound}
+                      onClick={() => setSelectedPitCompound(compound)}
+                      className={`px-3 py-2 border-2 transition-all ${
+                        isSelected 
+                          ? 'border-primary bg-primary/20' 
+                          : 'border-border bg-card hover:border-muted-foreground'
+                      }`}
+                    >
+                      <div 
+                        className="w-8 h-8 rounded-full border-2 mx-auto mb-1 flex items-center justify-center text-sm font-bold"
+                        style={{ borderColor: data.color, color: data.color }}
+                      >
+                        {compound[0].toUpperCase()}
+                      </div>
+                      <p className="font-display text-[8px]" style={{ color: data.color }}>{data.name}</p>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
             
             <div className="space-y-4">
               <div className="flex items-center justify-center gap-8">
@@ -1048,7 +1261,9 @@ const RaceScreen: React.FC = () => {
                 </div>
                 <div className="text-center">
                   <span className="text-4xl">🛞</span>
-                  <p className="font-display text-[8px] text-muted-foreground mt-1">NEW TIRES</p>
+                  <p className="font-display text-[8px] text-muted-foreground mt-1">
+                    {TIRE_COMPOUNDS[selectedPitCompound].name} TIRES
+                  </p>
                 </div>
               </div>
               
@@ -1062,7 +1277,7 @@ const RaceScreen: React.FC = () => {
               <p className="font-display text-lg text-foreground animate-pulse">
                 {pitProgress < 30 && '🔧 Lifting car...'}
                 {pitProgress >= 30 && pitProgress < 60 && '⛽ Refueling...'}
-                {pitProgress >= 60 && pitProgress < 90 && '🛞 Changing tires...'}
+                {pitProgress >= 60 && pitProgress < 90 && `🛞 Fitting ${TIRE_COMPOUNDS[selectedPitCompound].name} tires...`}
                 {pitProgress >= 90 && '✅ Almost done!'}
               </p>
             </div>
