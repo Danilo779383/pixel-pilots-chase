@@ -90,6 +90,70 @@ export const LEGENDARY_RACERS: Racer[] = [
     isLegend: true,
     carColor: '#FF0000',
     stats: { speed: 99, handling: 96, acceleration: 95, championships: 2, wins: 19, races: 68, money: 2000000, fame: 80 }
+  },
+  {
+    id: 'piquet',
+    name: 'Nelson Piquet',
+    nationality: 'Brazil',
+    isLegend: true,
+    carColor: '#00A859',
+    stats: { speed: 93, handling: 94, acceleration: 91, championships: 3, wins: 23, races: 204, money: 4000000, fame: 88 }
+  },
+  {
+    id: 'lauda',
+    name: 'Niki Lauda',
+    nationality: 'Austria',
+    isLegend: true,
+    carColor: '#ED2939',
+    stats: { speed: 92, handling: 98, acceleration: 88, championships: 3, wins: 25, races: 171, money: 4200000, fame: 92 }
+  },
+  {
+    id: 'berger',
+    name: 'Gerhard Berger',
+    nationality: 'Austria',
+    isLegend: true,
+    carColor: '#FF6B00',
+    stats: { speed: 91, handling: 89, acceleration: 93, championships: 0, wins: 10, races: 210, money: 2500000, fame: 75 }
+  },
+  {
+    id: 'hill',
+    name: 'Damon Hill',
+    nationality: 'UK',
+    isLegend: true,
+    carColor: '#1E3A8A',
+    stats: { speed: 90, handling: 92, acceleration: 89, championships: 1, wins: 22, races: 115, money: 2800000, fame: 78 }
+  },
+  {
+    id: 'patrese',
+    name: 'Riccardo Patrese',
+    nationality: 'Italy',
+    isLegend: true,
+    carColor: '#008C45',
+    stats: { speed: 88, handling: 91, acceleration: 87, championships: 0, wins: 6, races: 256, money: 2200000, fame: 70 }
+  },
+  {
+    id: 'alesi',
+    name: 'Jean Alesi',
+    nationality: 'France',
+    isLegend: true,
+    carColor: '#002395',
+    stats: { speed: 89, handling: 86, acceleration: 95, championships: 0, wins: 1, races: 201, money: 2000000, fame: 72 }
+  },
+  {
+    id: 'hakkinen',
+    name: 'Mika Häkkinen',
+    nationality: 'Finland',
+    isLegend: true,
+    carColor: '#003580',
+    stats: { speed: 97, handling: 93, acceleration: 94, championships: 2, wins: 20, races: 161, money: 3500000, fame: 90 }
+  },
+  {
+    id: 'villeneuve',
+    name: 'Jacques Villeneuve',
+    nationality: 'Canada',
+    isLegend: true,
+    carColor: '#FF0000',
+    stats: { speed: 91, handling: 87, acceleration: 92, championships: 1, wins: 11, races: 163, money: 2600000, fame: 76 }
   }
 ];
 
