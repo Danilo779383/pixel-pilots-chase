@@ -1,3 +1,5 @@
+import { LEGENDARY_RACERS, getRivals, findRivalry, Rivalry } from '@/types/game';
+
 export interface AIOpponent {
   id: string;
   name: string;
@@ -11,6 +13,9 @@ export interface AIOpponent {
   scale: number;
   isColliding?: boolean;
   collisionCooldown?: number;
+  isRival?: boolean;
+  legendId?: string;
+  rivalry?: Rivalry;
 }
 
 export interface CollisionResult {
@@ -20,8 +25,18 @@ export interface CollisionResult {
   impactDirection: 'left' | 'right' | 'front' | 'rear' | null;
 }
 
-export const generateOpponents = (trackDifficulty: string): AIOpponent[] => {
-  const opponents: AIOpponent[] = [
+export const generateOpponents = (trackDifficulty: string, playerId?: string): AIOpponent[] => {
+  // Check if player is a legend and has rivals
+  const playerRivals = playerId ? getRivals(playerId) : [];
+  const hasRival = playerRivals.length > 0;
+  
+  // 60% chance to spawn a rival if player is a legend with rivals
+  const spawnRival = hasRival && Math.random() < 0.6;
+  const selectedRivalId = spawnRival ? playerRivals[Math.floor(Math.random() * playerRivals.length)] : null;
+  const selectedRival = selectedRivalId ? LEGENDARY_RACERS.find(r => r.id === selectedRivalId) : null;
+  const rivalry = selectedRivalId && playerId ? findRivalry(playerId, selectedRivalId) : null;
+
+  const baseOpponents: AIOpponent[] = [
     {
       id: 'ai1',
       name: 'Speed Demon',
@@ -87,10 +102,34 @@ export const generateOpponents = (trackDifficulty: string): AIOpponent[] => {
     'Extreme': 1.1,
   }[trackDifficulty] || 1;
 
-  return opponents.map(op => ({
+  let opponents = baseOpponents.map(op => ({
     ...op,
     speed: op.speed * difficultyMultiplier,
   }));
+
+  // Replace first opponent with rival if spawning one
+  if (selectedRival && rivalry) {
+    const rivalStats = selectedRival.stats;
+    opponents[0] = {
+      id: `rival_${selectedRival.id}`,
+      name: selectedRival.name,
+      carColor: selectedRival.carColor,
+      skillLevel: 'Legend',
+      speed: Math.min(1.0, (rivalStats.speed / 100) * difficultyMultiplier),
+      aggression: 0.9, // Rivals are aggressive
+      position: 1,
+      distance: 0,
+      x: 35,
+      scale: 1,
+      isColliding: false,
+      collisionCooldown: 0,
+      isRival: true,
+      legendId: selectedRival.id,
+      rivalry: rivalry,
+    };
+  }
+
+  return opponents;
 };
 
 export const updateOpponent = (

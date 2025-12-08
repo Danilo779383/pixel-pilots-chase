@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useGame } from '@/context/GameContext';
+import { Rivalry, RivalryEvent } from '@/types/game';
 import { 
   AIOpponent, 
   generateOpponents, 
@@ -129,6 +130,17 @@ const RaceScreen: React.FC = () => {
   const [strategyMessage, setStrategyMessage] = useState<{ text: string; urgency: 'info' | 'warn' | 'critical' } | null>(null);
   const lastStrategyUpdate = useRef<number>(0);
 
+  // Rivalry system state
+  const [activeRivalry, setActiveRivalry] = useState<Rivalry | null>(null);
+  const [rivalOpponent, setRivalOpponent] = useState<AIOpponent | null>(null);
+  const [rivalryMessage, setRivalryMessage] = useState<{ text: string; event: RivalryEvent; intensity: string } | null>(null);
+  const [showRivalryBanner, setShowRivalryBanner] = useState(false);
+  const [rivalryAggressionBoost, setRivalryAggressionBoost] = useState(0);
+  const lastRivalryEventTime = useRef<number>(0);
+  const triggeredRivalryEvents = useRef<Set<string>>(new Set());
+  const lastPlayerPosition = useRef<number>(5);
+  const lastOvertakeCheck = useRef<number>(0);
+
   // Calculate lap progress
   const getLapProgress = () => {
     const distanceInCurrentLap = distance % lapLength;
@@ -225,12 +237,23 @@ const RaceScreen: React.FC = () => {
   const lastTime = useRef<number>(0);
   const collisionCooldown = useRef<number>(0);
 
-  // Initialize opponents
+  // Initialize opponents with rivalry detection
   useEffect(() => {
-    if (currentTrack) {
-      setOpponents(generateOpponents(currentTrack.difficulty));
+    if (currentTrack && player) {
+      const generatedOpponents = generateOpponents(currentTrack.difficulty, player.id);
+      setOpponents(generatedOpponents);
+      
+      // Check for rival in opponents
+      const rival = generatedOpponents.find(op => op.isRival);
+      if (rival && rival.rivalry) {
+        setActiveRivalry(rival.rivalry);
+        setRivalOpponent(rival);
+        setShowRivalryBanner(true);
+        // Hide banner after 5 seconds
+        setTimeout(() => setShowRivalryBanner(false), 5000);
+      }
     }
-  }, [currentTrack]);
+  }, [currentTrack, player]);
 
   // Countdown timer with sound
   useEffect(() => {
@@ -243,8 +266,18 @@ const RaceScreen: React.FC = () => {
       startEngineSound(0);
       startRaceMusic();
       setRaceStarted(true);
+      
+      // Trigger race_start rivalry event
+      if (activeRivalry) {
+        const startEvent = activeRivalry.specialEvents.find(e => e.trigger === 'race_start');
+        if (startEvent && !triggeredRivalryEvents.current.has(startEvent.id)) {
+          triggeredRivalryEvents.current.add(startEvent.id);
+          setRivalryMessage({ text: startEvent.message, event: startEvent, intensity: activeRivalry.intensity });
+          setTimeout(() => setRivalryMessage(null), 4000);
+        }
+      }
     }
-  }, [countdown, raceStarted]);
+  }, [countdown, raceStarted, activeRivalry]);
 
   // Update engine sound based on speed
   useEffect(() => {
@@ -521,6 +554,26 @@ const RaceScreen: React.FC = () => {
           setHandlingPenalty(p => Math.min(1, p + collisionResult.impactSeverity * 0.5));
           playCollisionSound();
           
+          // Check for rivalry collision event
+          if (activeRivalry && rivalOpponent && collisionResult.opponentId === rivalOpponent.id) {
+            const now = Date.now();
+            if (now - lastRivalryEventTime.current > 5000) {
+              const collisionEvent = activeRivalry.specialEvents.find(e => e.trigger === 'collision');
+              if (collisionEvent) {
+                lastRivalryEventTime.current = now;
+                setRivalryMessage({ text: collisionEvent.message, event: collisionEvent, intensity: activeRivalry.intensity });
+                setTimeout(() => setRivalryMessage(null), 4000);
+                
+                // Apply rivalry effect
+                if (collisionEvent.effect) {
+                  if (collisionEvent.effect.type === 'aggression_boost') {
+                    setRivalryAggressionBoost(collisionEvent.effect.value);
+                  }
+                }
+              }
+            }
+          }
+          
           // Screen shake
           setScreenShake({
             x: (Math.random() - 0.5) * 10 * collisionResult.impactSeverity,
@@ -546,6 +599,26 @@ const RaceScreen: React.FC = () => {
       } else {
         // Clear screen shake
         setScreenShake({ x: 0, y: 0 });
+      }
+
+      // Check for overtake rivalry event
+      if (activeRivalry && rivalOpponent) {
+        const now = Date.now();
+        if (now - lastOvertakeCheck.current > 1000) {
+          lastOvertakeCheck.current = now;
+          const rivalPos = rivalOpponent.position;
+          
+          // Detect overtake (position improved past rival)
+          if (lastPlayerPosition.current > rivalPos && position <= rivalPos) {
+            const overtakeEvent = activeRivalry.specialEvents.find(e => e.trigger === 'overtake');
+            if (overtakeEvent && now - lastRivalryEventTime.current > 5000) {
+              lastRivalryEventTime.current = now;
+              setRivalryMessage({ text: overtakeEvent.message, event: overtakeEvent, intensity: activeRivalry.intensity });
+              setTimeout(() => setRivalryMessage(null), 4000);
+            }
+          }
+          lastPlayerPosition.current = position;
+        }
       }
 
       // Update AI opponents
@@ -635,6 +708,71 @@ const RaceScreen: React.FC = () => {
         <div className="absolute inset-0 z-30 bg-destructive/30 pointer-events-none" />
       )}
 
+      {/* Rivalry intro banner */}
+      {showRivalryBanner && activeRivalry && rivalOpponent && (
+        <div className="absolute inset-0 z-50 bg-background/90 flex items-center justify-center pointer-events-none animate-pulse">
+          <div className={`text-center space-y-4 p-8 border-2 max-w-lg ${
+            activeRivalry.intensity === 'legendary' ? 'border-accent bg-accent/10' :
+            activeRivalry.intensity === 'bitter' ? 'border-destructive bg-destructive/10' :
+            'border-primary bg-primary/10'
+          }`}>
+            <p className="font-display text-[10px] text-muted-foreground uppercase tracking-widest">
+              ⚔️ Historic Rivalry Detected ⚔️
+            </p>
+            <h2 className={`font-display text-2xl ${
+              activeRivalry.intensity === 'legendary' ? 'text-accent text-glow-yellow' :
+              activeRivalry.intensity === 'bitter' ? 'text-destructive' :
+              'text-primary text-glow-cyan'
+            }`}>
+              {activeRivalry.name}
+            </h2>
+            <p className="font-display text-sm text-foreground">{activeRivalry.description}</p>
+            <div className="flex items-center justify-center gap-4 pt-2">
+              <div className="text-center">
+                <div 
+                  className="w-10 h-10 rounded-full border-2 mx-auto mb-1"
+                  style={{ borderColor: player?.carColor, backgroundColor: player?.carColor + '40' }}
+                />
+                <p className="font-display text-[8px] text-muted-foreground">YOU</p>
+              </div>
+              <span className="font-display text-2xl text-destructive">VS</span>
+              <div className="text-center">
+                <div 
+                  className="w-10 h-10 rounded-full border-2 mx-auto mb-1"
+                  style={{ borderColor: rivalOpponent.carColor, backgroundColor: rivalOpponent.carColor + '40' }}
+                />
+                <p className="font-display text-[8px] text-muted-foreground">{rivalOpponent.name.split(' ')[0]}</p>
+              </div>
+            </div>
+            <p className="font-display text-[8px] text-muted-foreground italic mt-4">
+              "{activeRivalry.historicalContext}"
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* Rivalry event message */}
+      {rivalryMessage && !showRivalryBanner && (
+        <div className="absolute top-1/4 left-1/2 transform -translate-x-1/2 z-40 pointer-events-none">
+          <div className={`px-6 py-3 border-2 animate-pulse ${
+            rivalryMessage.intensity === 'legendary' ? 'bg-accent/30 border-accent' :
+            rivalryMessage.intensity === 'bitter' ? 'bg-destructive/30 border-destructive' :
+            'bg-primary/30 border-primary'
+          }`}>
+            <p className={`font-display text-lg text-center ${
+              rivalryMessage.intensity === 'legendary' ? 'text-accent text-glow-yellow' :
+              rivalryMessage.intensity === 'bitter' ? 'text-destructive' :
+              'text-primary text-glow-cyan'
+            }`}>
+              {rivalryMessage.text}
+            </p>
+            <p className="font-display text-[8px] text-center text-muted-foreground mt-1">
+              ⚔️ {rivalryMessage.event.name}
+            </p>
+          </div>
+        </div>
+      )}
+
       {/* Weather effects */}
       <WeatherEffects weather={weather} speed={speed} />
       
@@ -675,6 +813,24 @@ const RaceScreen: React.FC = () => {
           <p className="font-display text-[10px] text-muted-foreground">LAP</p>
           <p className="font-display text-2xl text-accent text-glow-yellow">{currentLap}/{TOTAL_LAPS}</p>
         </div>
+
+        {/* Rivalry indicator */}
+        {activeRivalry && rivalOpponent && (
+          <div className={`text-center px-3 py-1 border ${
+            activeRivalry.intensity === 'legendary' ? 'border-accent bg-accent/10' :
+            activeRivalry.intensity === 'bitter' ? 'border-destructive bg-destructive/10' :
+            'border-primary bg-primary/10'
+          }`}>
+            <p className="font-display text-[8px] text-muted-foreground">⚔️ RIVAL</p>
+            <p className={`font-display text-sm ${
+              activeRivalry.intensity === 'legendary' ? 'text-accent' :
+              activeRivalry.intensity === 'bitter' ? 'text-destructive' :
+              'text-primary'
+            }`}>
+              P{rivalOpponent.position} {rivalOpponent.name.split(' ')[0]}
+            </p>
+          </div>
+        )}
         
         <div className="text-center">
           <p className="font-display text-[10px] text-muted-foreground">POSITION</p>
@@ -929,31 +1085,41 @@ const RaceScreen: React.FC = () => {
       {/* Position tracker */}
       <div className="relative z-20 px-4">
         <div className="flex items-center justify-center gap-2 bg-card/50 border border-border p-2">
-          {[...opponents, { id: 'player', name: player.name, carColor: player.carColor, position, isColliding: collision?.isColliding }]
+          {[...opponents, { id: 'player', name: player.name, carColor: player.carColor, position, isColliding: collision?.isColliding, isRival: false }]
             .sort((a, b) => a.position - b.position)
-            .map((racer, idx) => (
-              <div 
-                key={racer.id}
-                className={`flex items-center gap-1 px-2 py-1 text-[8px] font-display transition-all ${
-                  racer.id === 'player' 
-                    ? racer.isColliding 
-                      ? 'bg-destructive/20 border border-destructive animate-pulse' 
-                      : 'bg-primary/20 border border-primary'
-                    : racer.isColliding 
-                      ? 'bg-destructive/10 border border-destructive/50'
-                      : 'bg-muted/50'
-                }`}
-              >
-                <span className="text-accent">P{idx + 1}</span>
+            .map((racer, idx) => {
+              const isRival = 'isRival' in racer && racer.isRival;
+              return (
                 <div 
-                  className="w-3 h-3 rounded-sm"
-                  style={{ backgroundColor: racer.carColor }}
-                />
-                <span className="text-foreground truncate max-w-16">
-                  {racer.id === 'player' ? 'YOU' : racer.name.split(' ')[0]}
-                </span>
-              </div>
-            ))}
+                  key={racer.id}
+                  className={`flex items-center gap-1 px-2 py-1 text-[8px] font-display transition-all ${
+                    racer.id === 'player' 
+                      ? racer.isColliding 
+                        ? 'bg-destructive/20 border border-destructive animate-pulse' 
+                        : 'bg-primary/20 border border-primary'
+                      : isRival
+                        ? activeRivalry?.intensity === 'legendary'
+                          ? 'bg-accent/20 border border-accent'
+                          : activeRivalry?.intensity === 'bitter'
+                            ? 'bg-destructive/20 border border-destructive'
+                            : 'bg-secondary/20 border border-secondary'
+                        : racer.isColliding 
+                          ? 'bg-destructive/10 border border-destructive/50'
+                          : 'bg-muted/50'
+                  }`}
+                >
+                  <span className="text-accent">P{idx + 1}</span>
+                  {isRival && <span className="text-[6px]">⚔️</span>}
+                  <div 
+                    className="w-3 h-3 rounded-sm"
+                    style={{ backgroundColor: racer.carColor }}
+                  />
+                  <span className={`truncate max-w-16 ${isRival ? 'text-accent' : 'text-foreground'}`}>
+                    {racer.id === 'player' ? 'YOU' : racer.name.split(' ')[0]}
+                  </span>
+                </div>
+              );
+            })}
         </div>
       </div>
 
