@@ -1,12 +1,14 @@
 import React, { useEffect, useState } from 'react';
 import { useGame } from '@/context/GameContext';
 import { startMenuMusic, stopAllMusic } from '@/utils/soundEffects';
-import { LEGENDARY_RIVALRIES, RivalryRecord } from '@/types/game';
+import { LEGENDARY_RIVALRIES, RivalryRecord, TrackRecord } from '@/types/game';
+
+type ViewTab = 'stats' | 'rivalries' | 'records';
 
 const Standings: React.FC = () => {
   const { gameState, setScreen, unlockTrack, tracks } = useGame();
   const { player } = gameState;
-  const [showRivalries, setShowRivalries] = useState(false);
+  const [activeTab, setActiveTab] = useState<ViewTab>('stats');
 
   useEffect(() => {
     startMenuMusic();
@@ -26,6 +28,7 @@ const Standings: React.FC = () => {
   };
 
   const rivalryRecords = player.stats.rivalryRecords || [];
+  const trackRecords = player.stats.trackRecords || [];
   
   // Get rivalry info for display
   const getRivalryInfo = (rivalId: string) => {
@@ -34,6 +37,22 @@ const Standings: React.FC = () => {
       (r.racer2 === player.id && r.racer1 === rivalId)
     );
     return rivalry;
+  };
+  
+  const formatLapTime = (ms: number) => {
+    const mins = Math.floor(ms / 60000);
+    const secs = Math.floor((ms % 60000) / 1000);
+    const millis = Math.floor((ms % 1000) / 10);
+    return `${mins}:${secs.toString().padStart(2, '0')}.${millis.toString().padStart(2, '0')}`;
+  };
+  
+  const getWeatherIcon = (weather: string) => {
+    switch (weather) {
+      case 'rain': return '🌧️';
+      case 'night': return '🌙';
+      case 'storm': return '⛈️';
+      default: return '☀️';
+    }
   };
 
   return (
@@ -49,33 +68,45 @@ const Standings: React.FC = () => {
           <div className="h-0.5 w-48 mx-auto bg-gradient-to-r from-transparent via-primary to-transparent" />
         </div>
 
-        {/* Toggle between Stats and Rivalries */}
-        {rivalryRecords.length > 0 && (
-          <div className="flex justify-center gap-2">
+        {/* Tab Navigation */}
+        <div className="flex justify-center gap-2 flex-wrap">
+          <button
+            onClick={() => setActiveTab('stats')}
+            className={`font-display text-[10px] px-4 py-2 border transition-colors ${
+              activeTab === 'stats' 
+                ? 'border-primary bg-primary/20 text-primary' 
+                : 'border-border text-muted-foreground hover:border-primary/50'
+            }`}
+          >
+            STATS
+          </button>
+          {rivalryRecords.length > 0 && (
             <button
-              onClick={() => setShowRivalries(false)}
+              onClick={() => setActiveTab('rivalries')}
               className={`font-display text-[10px] px-4 py-2 border transition-colors ${
-                !showRivalries 
-                  ? 'border-primary bg-primary/20 text-primary' 
-                  : 'border-border text-muted-foreground hover:border-primary/50'
-              }`}
-            >
-              STATS
-            </button>
-            <button
-              onClick={() => setShowRivalries(true)}
-              className={`font-display text-[10px] px-4 py-2 border transition-colors ${
-                showRivalries 
+                activeTab === 'rivalries' 
                   ? 'border-secondary bg-secondary/20 text-secondary' 
                   : 'border-border text-muted-foreground hover:border-secondary/50'
               }`}
             >
               ⚔️ RIVALRIES ({rivalryRecords.length})
             </button>
-          </div>
-        )}
+          )}
+          {trackRecords.length > 0 && (
+            <button
+              onClick={() => setActiveTab('records')}
+              className={`font-display text-[10px] px-4 py-2 border transition-colors ${
+                activeTab === 'records' 
+                  ? 'border-accent bg-accent/20 text-accent' 
+                  : 'border-border text-muted-foreground hover:border-accent/50'
+              }`}
+            >
+              🏆 RECORDS ({trackRecords.length})
+            </button>
+          )}
+        </div>
 
-        {!showRivalries ? (
+        {activeTab === 'stats' && (
           /* Player Card - Stats View */
           <div className="bg-card/80 border-2 border-primary p-6 space-y-6 box-glow-cyan">
             <div className="flex items-center gap-4">
@@ -117,7 +148,9 @@ const Standings: React.FC = () => {
               <PerformanceBar label="ACCELERATION" value={player.stats.acceleration} color="bg-neon-yellow" />
             </div>
           </div>
-        ) : (
+        )}
+
+        {activeTab === 'rivalries' && (
           /* Rivalry Records View */
           <div className="bg-card/80 border-2 border-secondary p-6 space-y-4 box-glow-pink">
             <div className="text-center mb-4">
@@ -211,6 +244,65 @@ const Standings: React.FC = () => {
                     {rivalryRecords.length}
                   </p>
                   <p className="font-display text-[8px] text-muted-foreground">RIVALS FACED</p>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {activeTab === 'records' && (
+          /* Track Records Leaderboard */
+          <div className="bg-card/80 border-2 border-accent p-6 space-y-4 box-glow-yellow">
+            <div className="text-center mb-4">
+              <h2 className="font-display text-sm text-accent text-glow-yellow">🏆 LAP RECORDS 🏆</h2>
+              <p className="font-display text-[8px] text-muted-foreground mt-1">Your all-time best lap times</p>
+            </div>
+            
+            <div className="space-y-3 max-h-72 overflow-y-auto">
+              {trackRecords
+                .sort((a: TrackRecord, b: TrackRecord) => a.trackName.localeCompare(b.trackName))
+                .map((record: TrackRecord, index: number) => (
+                  <div 
+                    key={record.trackId}
+                    className="p-4 border border-accent/30 bg-accent/5"
+                  >
+                    <div className="flex items-center justify-between mb-2">
+                      <div className="flex items-center gap-3">
+                        <span className="font-display text-lg text-accent">#{index + 1}</span>
+                        <div>
+                          <h3 className="font-display text-xs text-foreground">{record.trackName}</h3>
+                          <p className="font-display text-[8px] text-muted-foreground">
+                            Season {record.setOnSeason} {getWeatherIcon(record.weather)}
+                          </p>
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <p className="font-display text-lg text-accent text-glow-yellow">
+                          {formatLapTime(record.bestLapTime)}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+            </div>
+            
+            {/* Records Summary */}
+            <div className="border-t border-border pt-4 mt-4">
+              <div className="grid grid-cols-2 gap-4 text-center">
+                <div>
+                  <p className="font-display text-lg text-accent">
+                    {trackRecords.length}
+                  </p>
+                  <p className="font-display text-[8px] text-muted-foreground">TRACKS RECORDED</p>
+                </div>
+                <div>
+                  <p className="font-display text-lg text-primary">
+                    {trackRecords.length > 0 
+                      ? formatLapTime(Math.min(...trackRecords.map((r: TrackRecord) => r.bestLapTime)))
+                      : '--:--:--'
+                    }
+                  </p>
+                  <p className="font-display text-[8px] text-muted-foreground">FASTEST LAP</p>
                 </div>
               </div>
             </div>

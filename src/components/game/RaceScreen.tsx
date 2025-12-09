@@ -675,7 +675,7 @@ const RaceScreen: React.FC = () => {
       };
     }
     
-    endRace(position, prize, rivalResult);
+    endRace(position, prize, rivalResult, bestLapTime || undefined);
   };
 
   if (!player || !currentTrack) return null;

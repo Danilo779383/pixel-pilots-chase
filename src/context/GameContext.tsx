@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useCallback } from 'react';
-import { GameState, Racer, Track, Championship, WORLD_TRACKS, Weather, WeatherCondition, RivalryRecord } from '@/types/game';
+import { GameState, Racer, Track, Championship, WORLD_TRACKS, Weather, WeatherCondition, RivalryRecord, TrackRecord } from '@/types/game';
 
 const generateRandomWeather = (): Weather => {
   const conditions: WeatherCondition[] = ['clear', 'clear', 'clear', 'rain', 'night', 'storm'];
@@ -24,7 +24,7 @@ interface GameContextType {
   setPlayer: (player: Racer) => void;
   selectTrack: (track: Track) => void;
   startRace: () => void;
-  endRace: (position: number, prize: number, rivalResult?: { rivalId: string; rivalName: string; playerWon: boolean }) => void;
+  endRace: (position: number, prize: number, rivalResult?: { rivalId: string; rivalName: string; playerWon: boolean }, bestLapTime?: number) => void;
   updatePlayerStats: (stats: Partial<Racer['stats']>) => void;
   retirePlayer: () => void;
   tracks: Track[];
@@ -62,7 +62,7 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setGameState(prev => ({ ...prev, isRacing: true, currentScreen: 'race', weather }));
   }, []);
 
-  const endRace = useCallback((position: number, prize: number, rivalResult?: { rivalId: string; rivalName: string; playerWon: boolean }) => {
+  const endRace = useCallback((position: number, prize: number, rivalResult?: { rivalId: string; rivalName: string; playerWon: boolean }, bestLapTime?: number) => {
     setGameState(prev => {
       if (!prev.player) return prev;
       
@@ -107,6 +107,37 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }
       }
       
+      // Update track records if best lap time was set
+      let updatedTrackRecords = prev.player.stats.trackRecords || [];
+      if (bestLapTime && prev.currentTrack) {
+        const existingRecord = updatedTrackRecords.find(r => r.trackId === prev.currentTrack!.id);
+        if (!existingRecord || bestLapTime < existingRecord.bestLapTime) {
+          if (existingRecord) {
+            updatedTrackRecords = updatedTrackRecords.map(r =>
+              r.trackId === prev.currentTrack!.id
+                ? {
+                    ...r,
+                    bestLapTime,
+                    setOnSeason: prev.season,
+                    weather: prev.weather.condition
+                  }
+                : r
+            );
+          } else {
+            updatedTrackRecords = [
+              ...updatedTrackRecords,
+              {
+                trackId: prev.currentTrack.id,
+                trackName: prev.currentTrack.name,
+                bestLapTime,
+                setOnSeason: prev.season,
+                weather: prev.weather.condition
+              }
+            ];
+          }
+        }
+      }
+      
       return {
         ...prev,
         isRacing: false,
@@ -120,6 +151,7 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
             money: prev.player.stats.money + totalPrize,
             fame: Math.min(100, prev.player.stats.fame + fameGain),
             rivalryRecords: updatedRivalryRecords,
+            trackRecords: updatedTrackRecords,
           }
         }
       };
