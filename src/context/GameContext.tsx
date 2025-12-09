@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useCallback } from 'react';
-import { GameState, Racer, Track, Championship, WORLD_TRACKS, Weather, WeatherCondition } from '@/types/game';
+import { GameState, Racer, Track, Championship, WORLD_TRACKS, Weather, WeatherCondition, RivalryRecord } from '@/types/game';
 
 const generateRandomWeather = (): Weather => {
   const conditions: WeatherCondition[] = ['clear', 'clear', 'clear', 'rain', 'night', 'storm'];
@@ -24,7 +24,7 @@ interface GameContextType {
   setPlayer: (player: Racer) => void;
   selectTrack: (track: Track) => void;
   startRace: () => void;
-  endRace: (position: number, prize: number) => void;
+  endRace: (position: number, prize: number, rivalResult?: { rivalId: string; rivalName: string; playerWon: boolean }) => void;
   updatePlayerStats: (stats: Partial<Racer['stats']>) => void;
   retirePlayer: () => void;
   tracks: Track[];
@@ -62,12 +62,41 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setGameState(prev => ({ ...prev, isRacing: true, currentScreen: 'race', weather }));
   }, []);
 
-  const endRace = useCallback((position: number, prize: number) => {
+  const endRace = useCallback((position: number, prize: number, rivalResult?: { rivalId: string; rivalName: string; playerWon: boolean }) => {
     setGameState(prev => {
       if (!prev.player) return prev;
       
       const wins = position === 1 ? prev.player.stats.wins + 1 : prev.player.stats.wins;
       const fameGain = position === 1 ? 10 : position <= 3 ? 5 : 1;
+      
+      // Update rivalry records if there was a rival in the race
+      let updatedRivalryRecords = prev.player.stats.rivalryRecords || [];
+      if (rivalResult) {
+        const existingRecord = updatedRivalryRecords.find(r => r.rivalId === rivalResult.rivalId);
+        if (existingRecord) {
+          updatedRivalryRecords = updatedRivalryRecords.map(r => 
+            r.rivalId === rivalResult.rivalId
+              ? {
+                  ...r,
+                  wins: r.wins + (rivalResult.playerWon ? 1 : 0),
+                  losses: r.losses + (rivalResult.playerWon ? 0 : 1),
+                  races: r.races + 1
+                }
+              : r
+          );
+        } else {
+          updatedRivalryRecords = [
+            ...updatedRivalryRecords,
+            {
+              rivalId: rivalResult.rivalId,
+              rivalName: rivalResult.rivalName,
+              wins: rivalResult.playerWon ? 1 : 0,
+              losses: rivalResult.playerWon ? 0 : 1,
+              races: 1
+            }
+          ];
+        }
+      }
       
       return {
         ...prev,
@@ -81,6 +110,7 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
             wins,
             money: prev.player.stats.money + prize,
             fame: Math.min(100, prev.player.stats.fame + fameGain),
+            rivalryRecords: updatedRivalryRecords,
           }
         }
       };

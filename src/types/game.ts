@@ -8,6 +8,14 @@ export interface Racer {
   avatar?: string;
 }
 
+export interface RivalryRecord {
+  rivalId: string;
+  rivalName: string;
+  wins: number;
+  losses: number;
+  races: number;
+}
+
 export interface RacerStats {
   speed: number;
   handling: number;
@@ -17,6 +25,7 @@ export interface RacerStats {
   races: number;
   money: number;
   fame: number;
+  rivalryRecords?: RivalryRecord[];
 }
 
 export interface Track {

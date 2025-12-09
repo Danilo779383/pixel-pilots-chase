@@ -663,7 +663,19 @@ const RaceScreen: React.FC = () => {
   const handleFinish = () => {
     const prizes = [50000, 25000, 10000, 5000, 2000];
     const prize = prizes[position - 1] || 1000;
-    endRace(position, prize);
+    
+    // Determine rivalry result if rival was in race
+    let rivalResult: { rivalId: string; rivalName: string; playerWon: boolean } | undefined;
+    if (rivalOpponent) {
+      const rivalPosition = rivalOpponent.position;
+      rivalResult = {
+        rivalId: rivalOpponent.legendId || rivalOpponent.id,
+        rivalName: rivalOpponent.name,
+        playerWon: position < rivalPosition
+      };
+    }
+    
+    endRace(position, prize, rivalResult);
   };
 
   if (!player || !currentTrack) return null;

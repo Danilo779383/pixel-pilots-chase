@@ -1,10 +1,12 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useGame } from '@/context/GameContext';
 import { startMenuMusic, stopAllMusic } from '@/utils/soundEffects';
+import { LEGENDARY_RIVALRIES, RivalryRecord } from '@/types/game';
 
 const Standings: React.FC = () => {
   const { gameState, setScreen, unlockTrack, tracks } = useGame();
   const { player } = gameState;
+  const [showRivalries, setShowRivalries] = useState(false);
 
   useEffect(() => {
     startMenuMusic();
@@ -23,6 +25,17 @@ const Standings: React.FC = () => {
     }
   };
 
+  const rivalryRecords = player.stats.rivalryRecords || [];
+  
+  // Get rivalry info for display
+  const getRivalryInfo = (rivalId: string) => {
+    const rivalry = LEGENDARY_RIVALRIES.find(r => 
+      (r.racer1 === player.id && r.racer2 === rivalId) ||
+      (r.racer2 === player.id && r.racer1 === rivalId)
+    );
+    return rivalry;
+  };
+
   return (
     <div className="min-h-screen flex flex-col items-center justify-center p-4 relative">
       <div className="absolute inset-0 retro-grid opacity-20" />
@@ -36,47 +49,173 @@ const Standings: React.FC = () => {
           <div className="h-0.5 w-48 mx-auto bg-gradient-to-r from-transparent via-primary to-transparent" />
         </div>
 
-        {/* Player Card */}
-        <div className="bg-card/80 border-2 border-primary p-6 space-y-6 box-glow-cyan">
-          <div className="flex items-center gap-4">
-            <div 
-              className="w-16 h-16 flex items-center justify-center text-3xl border border-border"
-              style={{ backgroundColor: player.carColor + '30' }}
+        {/* Toggle between Stats and Rivalries */}
+        {rivalryRecords.length > 0 && (
+          <div className="flex justify-center gap-2">
+            <button
+              onClick={() => setShowRivalries(false)}
+              className={`font-display text-[10px] px-4 py-2 border transition-colors ${
+                !showRivalries 
+                  ? 'border-primary bg-primary/20 text-primary' 
+                  : 'border-border text-muted-foreground hover:border-primary/50'
+              }`}
             >
-              🏎️
+              STATS
+            </button>
+            <button
+              onClick={() => setShowRivalries(true)}
+              className={`font-display text-[10px] px-4 py-2 border transition-colors ${
+                showRivalries 
+                  ? 'border-secondary bg-secondary/20 text-secondary' 
+                  : 'border-border text-muted-foreground hover:border-secondary/50'
+              }`}
+            >
+              ⚔️ RIVALRIES ({rivalryRecords.length})
+            </button>
+          </div>
+        )}
+
+        {!showRivalries ? (
+          /* Player Card - Stats View */
+          <div className="bg-card/80 border-2 border-primary p-6 space-y-6 box-glow-cyan">
+            <div className="flex items-center gap-4">
+              <div 
+                className="w-16 h-16 flex items-center justify-center text-3xl border border-border"
+                style={{ backgroundColor: player.carColor + '30' }}
+              >
+                🏎️
+              </div>
+              <div>
+                <h2 className="font-display text-sm text-foreground">{player.name}</h2>
+                <p className="font-body text-xs text-muted-foreground">{player.nationality}</p>
+                {player.isLegend && (
+                  <span className="font-display text-[8px] text-accent">★ LEGEND</span>
+                )}
+              </div>
             </div>
-            <div>
-              <h2 className="font-display text-sm text-foreground">{player.name}</h2>
-              <p className="font-body text-xs text-muted-foreground">{player.nationality}</p>
-              {player.isLegend && (
-                <span className="font-display text-[8px] text-accent">★ LEGEND</span>
-              )}
+
+            {/* Stats Grid */}
+            <div className="grid grid-cols-2 gap-4">
+              <StatBox label="CHAMPIONSHIPS" value={player.stats.championships} color="text-accent" />
+              <StatBox label="RACE WINS" value={player.stats.wins} color="text-primary" />
+              <StatBox label="RACES" value={player.stats.races} color="text-secondary" />
+              <StatBox label="FAME" value={`${player.stats.fame}%`} color="text-neon-green" />
+            </div>
+
+            {/* Earnings */}
+            <div className="text-center py-4 border-t border-b border-border">
+              <p className="font-display text-[10px] text-muted-foreground mb-1">TOTAL EARNINGS</p>
+              <p className="font-display text-2xl text-accent text-glow-yellow">
+                ${player.stats.money.toLocaleString()}
+              </p>
+            </div>
+
+            {/* Performance Bars */}
+            <div className="space-y-2">
+              <PerformanceBar label="SPEED" value={player.stats.speed} color="bg-neon-cyan" />
+              <PerformanceBar label="HANDLING" value={player.stats.handling} color="bg-neon-pink" />
+              <PerformanceBar label="ACCELERATION" value={player.stats.acceleration} color="bg-neon-yellow" />
             </div>
           </div>
-
-          {/* Stats Grid */}
-          <div className="grid grid-cols-2 gap-4">
-            <StatBox label="CHAMPIONSHIPS" value={player.stats.championships} color="text-accent" />
-            <StatBox label="RACE WINS" value={player.stats.wins} color="text-primary" />
-            <StatBox label="RACES" value={player.stats.races} color="text-secondary" />
-            <StatBox label="FAME" value={`${player.stats.fame}%`} color="text-neon-green" />
+        ) : (
+          /* Rivalry Records View */
+          <div className="bg-card/80 border-2 border-secondary p-6 space-y-4 box-glow-pink">
+            <div className="text-center mb-4">
+              <h2 className="font-display text-sm text-secondary text-glow-pink">⚔️ RIVALRY RECORDS ⚔️</h2>
+              <p className="font-display text-[8px] text-muted-foreground mt-1">Head-to-head against your rivals</p>
+            </div>
+            
+            <div className="space-y-3 max-h-72 overflow-y-auto">
+              {rivalryRecords.map((record: RivalryRecord) => {
+                const rivalry = getRivalryInfo(record.rivalId);
+                const winRate = record.races > 0 ? Math.round((record.wins / record.races) * 100) : 0;
+                const isDominating = record.wins > record.losses;
+                const isLosing = record.losses > record.wins;
+                
+                return (
+                  <div 
+                    key={record.rivalId}
+                    className={`p-4 border ${
+                      rivalry?.intensity === 'legendary' ? 'border-accent bg-accent/5' :
+                      rivalry?.intensity === 'bitter' ? 'border-destructive bg-destructive/5' :
+                      'border-primary bg-primary/5'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between mb-2">
+                      <div>
+                        <h3 className="font-display text-xs text-foreground">{record.rivalName}</h3>
+                        {rivalry && (
+                          <p className={`font-display text-[8px] ${
+                            rivalry.intensity === 'legendary' ? 'text-accent' :
+                            rivalry.intensity === 'bitter' ? 'text-destructive' :
+                            'text-primary'
+                          }`}>
+                            {rivalry.name}
+                          </p>
+                        )}
+                      </div>
+                      <div className={`font-display text-lg ${
+                        isDominating ? 'text-neon-green' : isLosing ? 'text-destructive' : 'text-muted-foreground'
+                      }`}>
+                        {record.wins}-{record.losses}
+                      </div>
+                    </div>
+                    
+                    <div className="flex items-center gap-2">
+                      <div className="flex-1 h-2 bg-muted overflow-hidden">
+                        <div 
+                          className={`h-full transition-all ${
+                            isDominating ? 'bg-neon-green' : isLosing ? 'bg-destructive' : 'bg-muted-foreground'
+                          }`}
+                          style={{ width: `${winRate}%` }}
+                        />
+                      </div>
+                      <span className="font-display text-[10px] text-muted-foreground w-12 text-right">
+                        {winRate}% WIN
+                      </span>
+                    </div>
+                    
+                    <div className="flex justify-between mt-2">
+                      <span className="font-display text-[8px] text-muted-foreground">
+                        {record.races} RACES
+                      </span>
+                      {isDominating && record.wins >= 3 && (
+                        <span className="font-display text-[8px] text-neon-green">🏆 DOMINANT</span>
+                      )}
+                      {isLosing && record.losses >= 3 && (
+                        <span className="font-display text-[8px] text-destructive">😤 NEEDS REVENGE</span>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+            
+            {/* Summary Stats */}
+            <div className="border-t border-border pt-4 mt-4">
+              <div className="grid grid-cols-3 gap-2 text-center">
+                <div>
+                  <p className="font-display text-lg text-neon-green">
+                    {rivalryRecords.reduce((sum: number, r: RivalryRecord) => sum + r.wins, 0)}
+                  </p>
+                  <p className="font-display text-[8px] text-muted-foreground">TOTAL WINS</p>
+                </div>
+                <div>
+                  <p className="font-display text-lg text-destructive">
+                    {rivalryRecords.reduce((sum: number, r: RivalryRecord) => sum + r.losses, 0)}
+                  </p>
+                  <p className="font-display text-[8px] text-muted-foreground">TOTAL LOSSES</p>
+                </div>
+                <div>
+                  <p className="font-display text-lg text-foreground">
+                    {rivalryRecords.length}
+                  </p>
+                  <p className="font-display text-[8px] text-muted-foreground">RIVALS FACED</p>
+                </div>
+              </div>
+            </div>
           </div>
-
-          {/* Earnings */}
-          <div className="text-center py-4 border-t border-b border-border">
-            <p className="font-display text-[10px] text-muted-foreground mb-1">TOTAL EARNINGS</p>
-            <p className="font-display text-2xl text-accent text-glow-yellow">
-              ${player.stats.money.toLocaleString()}
-            </p>
-          </div>
-
-          {/* Performance Bars */}
-          <div className="space-y-2">
-            <PerformanceBar label="SPEED" value={player.stats.speed} color="bg-neon-cyan" />
-            <PerformanceBar label="HANDLING" value={player.stats.handling} color="bg-neon-pink" />
-            <PerformanceBar label="ACCELERATION" value={player.stats.acceleration} color="bg-neon-yellow" />
-          </div>
-        </div>
+        )}
 
         {/* Unlock notification */}
         {canUnlock && (
