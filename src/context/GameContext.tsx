@@ -67,7 +67,16 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (!prev.player) return prev;
       
       const wins = position === 1 ? prev.player.stats.wins + 1 : prev.player.stats.wins;
-      const fameGain = position === 1 ? 10 : position <= 3 ? 5 : 1;
+      let fameGain = position === 1 ? 10 : position <= 3 ? 5 : 1;
+      let totalPrize = prize;
+      
+      // Rivalry bonuses when beating your rival
+      if (rivalResult?.playerWon) {
+        const rivalryBonus = 15000; // Bonus prize money
+        const rivalryFameBonus = 5; // Extra fame for defeating rival
+        totalPrize += rivalryBonus;
+        fameGain += rivalryFameBonus;
+      }
       
       // Update rivalry records if there was a rival in the race
       let updatedRivalryRecords = prev.player.stats.rivalryRecords || [];
@@ -108,7 +117,7 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
             ...prev.player.stats,
             races: prev.player.stats.races + 1,
             wins,
-            money: prev.player.stats.money + prize,
+            money: prev.player.stats.money + totalPrize,
             fame: Math.min(100, prev.player.stats.fame + fameGain),
             rivalryRecords: updatedRivalryRecords,
           }
