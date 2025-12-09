@@ -16,6 +16,14 @@ export interface RivalryRecord {
   races: number;
 }
 
+export interface TrackRecord {
+  trackId: string;
+  trackName: string;
+  bestLapTime: number; // in milliseconds
+  setOnSeason: number;
+  weather: string;
+}
+
 export interface RacerStats {
   speed: number;
   handling: number;
@@ -26,6 +34,7 @@ export interface RacerStats {
   money: number;
   fame: number;
   rivalryRecords?: RivalryRecord[];
+  trackRecords?: TrackRecord[];
 }
 
 export interface Track {
